@@ -1,4 +1,6 @@
 
+#ifndef _HFSP_H_
+#define _HFSP_H_
 /* 
  * Description of all the format for HFS Plus
  * Most of it is taken from the XNU kernel
@@ -74,15 +76,51 @@ struct HFSPlusVolumeHeader {
     struct HFSPlusForkData  startupFile;       /* boot file (secondary loader) */
 } __attribute__((aligned(2), packed));
 
+
+/* BTNodeDescriptor -- Every B-tree node starts with these fields. */
+struct BTNodeDescriptor {
+    __int32_t   fLink;          /* next node at this level*/
+    __int32_t   bLink;          /* previous node at this level*/
+    __int8_t    kind;           /* kind of node (leaf, index, header, map)*/
+    __int8_t    height;         /* zero for header, map; child is one more than parent*/
+    __int16_t   numRecords;     /* number of records in this node*/
+    __int16_t   reserved;       /* reserved - initialized as zero */
+} __attribute__((aligned(2), packed));
+typedef struct BTNodeDescriptor BTNodeDescriptor;
+
+/* BTHeaderRec -- The first record of a B-tree header node */
+struct BTHeaderRec {
+    __int16_t   treeDepth;          /* maximum height (usually leaf nodes) */
+    __int32_t   rootNode;           /* node number of root node */
+    __int32_t   leafRecords;        /* number of leaf records in all leaf nodes */
+    __int32_t   firstLeafNode;      /* node number of first leaf node */
+    __int32_t   lastLeafNode;       /* node number of last leaf node */
+    __int16_t   nodeSize;           /* size of a node, in bytes */
+    __int16_t   maxKeyLength;       /* reserved */
+    __int32_t   totalNodes;         /* total number of nodes in tree */
+    __int32_t   freeNodes;          /* number of unused (free) nodes in tree */
+    __int16_t   reserved1;          /* unused */
+    __int32_t   clumpSize;          /* reserved */
+    __int8_t    btreeType;          /* reserved */
+    __int8_t    keyCompareType;     /* Key string Comparison Type */
+    __int32_t   attributes;         /* persistent attributes about the tree */
+    __int32_t   reserved3[16];      /* reserved */
+} __attribute__((aligned(2), packed));
+typedef struct BTHeaderRec BTHeaderRec;
+
 struct hfspmount {
-    __int16_t   signature;  /* ==kHFSPlusSigWord */
-    __int16_t   version;    /* ==kHFSPlusVersion */
-    __int32_t   blockSize;  /* Size in byte of allocation block */
-    __int32_t   totalBlocks;
-    __int32_t   freeBlocks;
-    struct cdev * hm_dev;
-    struct vnode * hm_devvp;
+    __int16_t           hm_signature;  /* ==kHFSPlusSigWord */
+    __int16_t           hm_version;    /* ==kHFSPlusVersion */
+    __int32_t           hm_blockSize;  /* Size in byte of allocation block */
+    __int32_t           hm_totalBlocks;
+    __int32_t           hm_freeBlocks;
+    __int32_t           hm_fileCount;
+    struct cdev *       hm_dev;
+    struct vnode *      hm_devvp;
+    struct vnode *      hm_catalog_vp;
     struct g_consumer * hm_cp;
 };
 
+#define VFSTOHFSPMNT(mp)   ((struct hfspmount *)((mp)->mnt_data))
 
+#endif /* !_HFSP_H_ */
