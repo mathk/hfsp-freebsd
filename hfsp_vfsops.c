@@ -22,9 +22,14 @@
 
 MALLOC_DEFINE(M_HFSPMNT, "hfsp_mount", "HFS Plus mount structure");
 
+static uma_zone_t       uma_inode;
+
 static vfs_mount_t      hfsp_mount;
 static vfs_unmount_t    hfsp_unmount;
 static vfs_statfs_t     hfsp_statfs;
+
+int hfsp_vget_fork(struct mount * mp, struct HFSPlusForkData * fork, struct vnode ** vpp);
+int hfsp_mount_volume(struct vnode * devvp, struct hfspmount * hmp, struct HFSPlusVolumeHeader * hfsph);
 
 static struct vfsops hfsp_vfsops = {
 //    .vfs_fhtovp =   NULL,
@@ -56,6 +61,12 @@ hfsp_mount(struct mount *mp)
     opts = mp->mnt_optnew;
     vnodecovered = mp->mnt_vnodecovered;
 
+    if (uma_inode == NULL)
+    {
+        uma_inode = uma_zcreate("HFS+ inode", sizeof(struct hfsp_inode), NULL, NULL, NULL, NULL,
+                                UMA_ALIGN_PTR, 0);
+    }
+
     vfs_getopt(opts, "from", (void **)&fromPath, &len);
 
     uprintf("Mounting device\n");
@@ -77,7 +88,7 @@ hfsp_mount(struct mount *mp)
 
     NDFREE(ndp, NDF_ONLY_PNBUF);
     devvp = ndp->ni_vp;
-    
+
     if (!vn_isdisk(devvp, &error)) {
         vput(devvp);
         return error;
@@ -137,6 +148,48 @@ out:
     }
     vrele(devvp);
     return error;
+}
+
+int
+hfsp_vget_fork(struct mount * mp, struct HFSPlusForkData * fork, struct vnode ** vpp)
+{
+    struct hfspmount * hmp;
+    struct hfsp_inode * ip;
+    struct vnode * vp;
+    int i, error; 
+    ip = uma_zalloc(uma_inode, M_WAITOK | M_ZERO);
+    hmp = VFSTOHFSPMNT(mp);
+
+    ip->hi_fork.size = be64toh(fork->logicalSize);
+    ip->hi_fork.totalBlocks = be32toh(fork->totalBlocks);
+    for (i = 0; i < 8; i++)
+    {
+        ip->hi_fork.first_extents[i].startBlock = be32toh(fork->extents[i].startBlock);
+        ip->hi_fork.first_extents[i].blockCount = be32toh(fork->extents[i].blockCount);
+    }
+
+    error = getnewvnode("hfsp", mp, &hfsp_vnodeops, &vp);
+
+    if (error)
+    {
+        *vpp = NULL;
+        uma_zfree(uma_inode, ip);
+        return (error);
+    }
+
+    vp->v_data = ip;
+
+    error = insmntque(vp, mp);
+    if (error)
+    {
+        *vpp = NULL;
+        uma_zfree(uma_inode, ip);
+        return (error);
+    }
+
+    *vpp = vp;
+    return (0);
+
 }
 
 int

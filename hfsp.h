@@ -1,7 +1,7 @@
 
 #ifndef _HFSP_H_
 #define _HFSP_H_
-/* 
+/*
  * Description of all the format for HFS Plus
  * Most of it is taken from the XNU kernel
  */
@@ -90,21 +90,21 @@ typedef struct BTNodeDescriptor BTNodeDescriptor;
 
 /* BTHeaderRec -- The first record of a B-tree header node */
 struct BTHeaderRec {
-    __int16_t   treeDepth;          /* maximum height (usually leaf nodes) */
-    __int32_t   rootNode;           /* node number of root node */
-    __int32_t   leafRecords;        /* number of leaf records in all leaf nodes */
-    __int32_t   firstLeafNode;      /* node number of first leaf node */
-    __int32_t   lastLeafNode;       /* node number of last leaf node */
-    __int16_t   nodeSize;           /* size of a node, in bytes */
-    __int16_t   maxKeyLength;       /* reserved */
-    __int32_t   totalNodes;         /* total number of nodes in tree */
-    __int32_t   freeNodes;          /* number of unused (free) nodes in tree */
-    __int16_t   reserved1;          /* unused */
-    __int32_t   clumpSize;          /* reserved */
-    __int8_t    btreeType;          /* reserved */
-    __int8_t    keyCompareType;     /* Key string Comparison Type */
-    __int32_t   attributes;         /* persistent attributes about the tree */
-    __int32_t   reserved3[16];      /* reserved */
+    u_int16_t   treeDepth;          /* maximum height (usually leaf nodes) */
+    u_int32_t   rootNode;           /* node number of root node */
+    u_int32_t   leafRecords;        /* number of leaf records in all leaf nodes */
+    u_int32_t   firstLeafNode;      /* node number of first leaf node */
+    u_int32_t   lastLeafNode;       /* node number of last leaf node */
+    u_int16_t   nodeSize;           /* size of a node, in bytes */
+    u_int16_t   maxKeyLength;       /* reserved */
+    u_int32_t   totalNodes;         /* total number of nodes in tree */
+    u_int32_t   freeNodes;          /* number of unused (free) nodes in tree */
+    u_int16_t   reserved1;          /* unused */
+    u_int32_t   clumpSize;          /* reserved */
+    u_int8_t    btreeType;          /* reserved */
+    u_int8_t    keyCompareType;     /* Key string Comparison Type */
+    u_int32_t   attributes;         /* persistent attributes about the tree */
+    u_int32_t   reserved3[16];      /* reserved */
 } __attribute__((aligned(2), packed));
 typedef struct BTHeaderRec BTHeaderRec;
 
@@ -116,14 +116,18 @@ struct hfsp_extent_descriptor {
 struct hfsp_fork {
     u_int64_t   size;
     u_int32_t   totalBlocks;
+    struct hfsp_extent_descriptor first_extents[8];
 };
 
 struct hfsp_extend_fork {
-    
 };
 
 struct hfsp_catalog_fork {
-    
+
+};
+
+struct hfsp_inode {
+    struct hfsp_fork    hi_fork;
 };
 
 struct hfspmount {
@@ -140,5 +144,7 @@ struct hfspmount {
 };
 
 #define VFSTOHFSPMNT(mp)   ((struct hfspmount *)((mp)->mnt_data))
+
+extern struct vop_vector hfsp_vnodeops;
 
 #endif /* !_HFSP_H_ */
