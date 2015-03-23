@@ -25,17 +25,17 @@ enum {
 
 /* HFS Plus extent descriptor */
 struct HFSPlusExtentDescriptor {
-    __int32_t   startBlock;     /* first allocation block */
-    __int32_t   blockCount;     /* number of allocation blocks */
+    u_int32_t   startBlock;     /* first allocation block */
+    u_int32_t   blockCount;     /* number of allocation blocks */
 } __attribute__((aligned(2), packed));
 
 typedef struct HFSPlusExtentDescriptor HFSPlusExtentRecord[8];
 
 /* HFS Plus Fork data info - 80 bytes */
 struct HFSPlusForkData {
-    __int64_t           logicalSize;    /* fork's logical size in bytes */
-    __int32_t           clumpSize;      /* fork's clump size in bytes */
-    __int32_t           totalBlocks;    /* total blocks used by this fork */
+    u_int64_t           logicalSize;    /* fork's logical size in bytes */
+    u_int32_t           clumpSize;      /* fork's clump size in bytes */
+    u_int32_t           totalBlocks;    /* total blocks used by this fork */
     HFSPlusExtentRecord extents;        /* initial set of extents */
 } __attribute__((aligned(2), packed));
 
@@ -107,6 +107,24 @@ struct BTHeaderRec {
     __int32_t   reserved3[16];      /* reserved */
 } __attribute__((aligned(2), packed));
 typedef struct BTHeaderRec BTHeaderRec;
+
+struct hfsp_extent_descriptor {
+    u_int32_t   startBlock;     /* first allocation block */
+    u_int32_t   blockCount;     /* number of allocation blocks */
+};
+
+struct hfsp_fork {
+    u_int64_t   size;
+    u_int32_t   totalBlocks;
+};
+
+struct hfsp_extend_fork {
+    
+};
+
+struct hfsp_catalog_fork {
+    
+};
 
 struct hfspmount {
     __int16_t           hm_signature;  /* ==kHFSPlusSigWord */

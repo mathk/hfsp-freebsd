@@ -140,6 +140,14 @@ out:
 }
 
 int
+hfsp_mount_volume(struct vnode * devvp, struct hfspmount * hmp, struct HFSPlusVolumeHeader * hfsph)
+{
+    
+    return 0;
+}
+
+
+int
 hfsp_statfs(struct mount *mp, struct statfs *sbp)
 {
     struct hfspmount * hfsmp;
