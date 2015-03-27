@@ -7,6 +7,8 @@
  */
 
 
+struct hfspmount;
+
 MALLOC_DECLARE(M_HFSPMNT);
 
 /* Signatures used to differentiate between HFS and HFS Plus volumes */
@@ -79,12 +81,12 @@ struct HFSPlusVolumeHeader {
 
 /* BTNodeDescriptor -- Every B-tree node starts with these fields. */
 struct BTNodeDescriptor {
-    __int32_t   fLink;          /* next node at this level*/
-    __int32_t   bLink;          /* previous node at this level*/
+    u_int32_t   fLink;          /* next node at this level*/
+    u_int32_t   bLink;          /* previous node at this level*/
     __int8_t    kind;           /* kind of node (leaf, index, header, map)*/
-    __int8_t    height;         /* zero for header, map; child is one more than parent*/
-    __int16_t   numRecords;     /* number of records in this node*/
-    __int16_t   reserved;       /* reserved - initialized as zero */
+    u_int8_t    height;         /* zero for header, map; child is one more than parent*/
+    u_int16_t   numRecords;     /* number of records in this node*/
+    u_int16_t   reserved;       /* reserved - initialized as zero */
 } __attribute__((aligned(2), packed));
 typedef struct BTNodeDescriptor BTNodeDescriptor;
 
@@ -128,23 +130,25 @@ struct hfsp_catalog_fork {
 
 struct hfsp_inode {
     struct hfsp_fork    hi_fork;
+    struct hfspmount *  hi_mount;
 };
 
 struct hfspmount {
-    __int16_t           hm_signature;  /* ==kHFSPlusSigWord */
-    __int16_t           hm_version;    /* ==kHFSPlusVersion */
-    __int32_t           hm_blockSize;  /* Size in byte of allocation block */
-    __int32_t           hm_totalBlocks;
-    __int32_t           hm_freeBlocks;
-    __int32_t           hm_fileCount;
+    u_int16_t           hm_signature;  /* ==kHFSPlusSigWord */
+    u_int16_t           hm_version;    /* ==kHFSPlusVersion */
+    u_int32_t           hm_blockSize;  /* Size in byte of allocation block */
+    u_int32_t           hm_totalBlocks;
+    u_int32_t           hm_freeBlocks;
+    u_int32_t           hm_fileCount;
+    u_int32_t           hm_physBlockSize;
     struct cdev *       hm_dev;
     struct vnode *      hm_devvp;
     struct vnode *      hm_catalog_vp;
     struct g_consumer * hm_cp;
 };
 
-#define VFSTOHFSPMNT(mp)   ((struct hfspmount *)((mp)->mnt_data))
-
+#define VFSTOHFSPMNT(mp)        ((struct hfspmount *)((mp)->mnt_data))
+#define HFSP_FIRSTEXTENT_SIZE   8
 extern struct vop_vector hfsp_vnodeops;
 
 #endif /* !_HFSP_H_ */

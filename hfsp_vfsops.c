@@ -121,6 +121,7 @@ hfsp_mount(struct mount *mp)
     hmp->hm_blockSize = be32toh(hfsph->blockSize);
     hmp->hm_totalBlocks = be32toh(hfsph->totalBlocks);
     hmp->hm_freeBlocks = be32toh(hfsph->freeBlocks);
+    hmp->hm_physBlockSize = cp->provider->sectorsize;
 
     brelse(bp);
 
@@ -156,13 +157,15 @@ hfsp_vget_fork(struct mount * mp, struct HFSPlusForkData * fork, struct vnode **
     struct hfspmount * hmp;
     struct hfsp_inode * ip;
     struct vnode * vp;
-    int i, error; 
+    int i, error;
     ip = uma_zalloc(uma_inode, M_WAITOK | M_ZERO);
     hmp = VFSTOHFSPMNT(mp);
 
     ip->hi_fork.size = be64toh(fork->logicalSize);
     ip->hi_fork.totalBlocks = be32toh(fork->totalBlocks);
-    for (i = 0; i < 8; i++)
+    ip->hi_mount = mp;
+
+    for (i = 0; i < HFSP_FIRSTEXTENT_SIZE; i++)
     {
         ip->hi_fork.first_extents[i].startBlock = be32toh(fork->extents[i].startBlock);
         ip->hi_fork.first_extents[i].blockCount = be32toh(fork->extents[i].blockCount);
