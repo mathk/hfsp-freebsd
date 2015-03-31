@@ -143,7 +143,8 @@ struct hfspmount {
     u_int32_t           hm_physBlockSize;
     struct cdev *       hm_dev;
     struct vnode *      hm_devvp;
-    struct vnode *      hm_catalog_vp;
+    struct hfsp_inode * hm_extent_ip;
+    struct hfsp_inode * hm_catalog_ip;
     struct g_consumer * hm_cp;
 };
 

@@ -19,6 +19,7 @@
 #include <geom/geom_vfs.h>
 
 #include "hfsp.h"
+#include "hfsp_btree.h"
 
 MALLOC_DEFINE(M_HFSPMNT, "hfsp_mount", "HFS Plus mount structure");
 
@@ -27,12 +28,17 @@ static uma_zone_t       uma_inode;
 static vfs_mount_t      hfsp_mount;
 static vfs_unmount_t    hfsp_unmount;
 static vfs_statfs_t     hfsp_statfs;
+static vfs_init_t       hfsp_init;
+static vfs_uninit_t     hfsp_uninit;
 
-int hfsp_vget_fork(struct mount * mp, struct HFSPlusForkData * fork, struct vnode ** vpp);
+int hfsp_iget(struct hfspmount * mp, struct HFSPlusForkData * fork, struct hfsp_inode ** ipp);
+int hfsp_vget(struct mount * mp, struct HFSPlusForkData * fork, struct vnode ** vpp);
 int hfsp_mount_volume(struct vnode * devvp, struct hfspmount * hmp, struct HFSPlusVolumeHeader * hfsph);
 
 static struct vfsops hfsp_vfsops = {
 //    .vfs_fhtovp =   NULL,
+    .vfs_init =     hfsp_init,
+    .vfs_uninit =   hfsp_uninit,
     .vfs_mount =    hfsp_mount,
 //    .vfs_root = NULL,
     .vfs_statfs =   hfsp_statfs,
@@ -41,6 +47,23 @@ static struct vfsops hfsp_vfsops = {
 //    .vfs_vget =     NULL
 };
 VFS_SET(hfsp_vfsops, hfsp, 0);
+
+static int
+hfsp_init(struct vfsconf * conf)
+{
+    uprintf("HFS+ module initialized\n");
+    uma_inode = uma_zcreate("HFS+ inode", sizeof(struct hfsp_inode), NULL, NULL, NULL, NULL,
+                            UMA_ALIGN_PTR, 0);
+    return 0;
+}
+
+static int
+hfsp_uninit(struct vfsconf * conf)
+{
+    uma_zdestroy(uma_inode);
+    uprintf("HFS+ module uninitialized\n");
+    return 0;
+}
 
 static int
 hfsp_mount(struct mount *mp)
@@ -54,18 +77,12 @@ hfsp_mount(struct mount *mp)
     int error, len;
     struct buf *bp = NULL;
     struct g_consumer *cp = NULL;
-    struct HFSPlusVolumeHeader *hfsph;
+    struct HFSPlusVolumeHeader hfsph;
     struct hfspmount *hmp;
 
     td = curthread;
     opts = mp->mnt_optnew;
     vnodecovered = mp->mnt_vnodecovered;
-
-    if (uma_inode == NULL)
-    {
-        uma_inode = uma_zcreate("HFS+ inode", sizeof(struct hfsp_inode), NULL, NULL, NULL, NULL,
-                                UMA_ALIGN_PTR, 0);
-    }
 
     vfs_getopt(opts, "from", (void **)&fromPath, &len);
 
@@ -115,27 +132,34 @@ hfsp_mount(struct mount *mp)
     if ((error = bread(devvp, 2, 512, NOCRED, &bp)) != 0)
         goto out;
 
-    hfsph = (struct HFSPlusVolumeHeader *)bp->b_data;
+    bcopy(bp->b_data, &hfsph, sizeof(hfsph));
     hmp = malloc(sizeof(*hmp), M_HFSPMNT, M_WAITOK | M_ZERO);
-
-    hmp->hm_blockSize = be32toh(hfsph->blockSize);
-    hmp->hm_totalBlocks = be32toh(hfsph->totalBlocks);
-    hmp->hm_freeBlocks = be32toh(hfsph->freeBlocks);
-    hmp->hm_physBlockSize = cp->provider->sectorsize;
-
     brelse(bp);
+    bp = NULL;
+
+    hmp->hm_blockSize = be32toh(hfsph.blockSize);
+    hmp->hm_totalBlocks = be32toh(hfsph.totalBlocks);
+    hmp->hm_freeBlocks = be32toh(hfsph.freeBlocks);
+    hmp->hm_physBlockSize = cp->provider->sectorsize;
+    hmp->hm_dev = devvp->v_rdev;
+    hmp->hm_devvp = devvp;
+
+
+    hfsp_mount_volume(devvp, hmp, &hfsph);
 
     mp->mnt_data = hmp;
     mp->mnt_stat.f_fsid.val[0] = dev2udev(devvp->v_rdev);
     mp->mnt_stat.f_fsid.val[1] = mp->mnt_vfc->vfc_typenum;
-    hmp->hm_dev = devvp->v_rdev;
-    hmp->hm_devvp = devvp;
     hmp->hm_cp = cp;
     MNT_ILOCK(mp);
     mp->mnt_flag |= MNT_LOCAL;
     mp->mnt_kern_flag |= MNTK_LOOKUP_SHARED | MNTK_EXTENDED_SHARED;
     MNT_IUNLOCK(mp);
+
     vfs_mountedfrom(mp, fromPath);
+
+    error = ENOMEM;
+    goto out;
     return 0;
 out:
     if (bp)
@@ -152,23 +176,46 @@ out:
 }
 
 int
-hfsp_vget_fork(struct mount * mp, struct HFSPlusForkData * fork, struct vnode ** vpp)
+hfsp_iget(struct hfspmount * hmp, struct HFSPlusForkData * fork, struct hfsp_inode ** ipp)
 {
-    struct hfspmount * hmp;
     struct hfsp_inode * ip;
-    struct vnode * vp;
-    int i, error;
+    int i;
+
     ip = uma_zalloc(uma_inode, M_WAITOK | M_ZERO);
-    hmp = VFSTOHFSPMNT(mp);
+    if (ip == NULL)
+    {
+        *ipp = NULL;
+        return ENOMEM;
+    }
 
     ip->hi_fork.size = be64toh(fork->logicalSize);
     ip->hi_fork.totalBlocks = be32toh(fork->totalBlocks);
-    ip->hi_mount = mp;
+    ip->hi_mount = hmp;
 
     for (i = 0; i < HFSP_FIRSTEXTENT_SIZE; i++)
     {
         ip->hi_fork.first_extents[i].startBlock = be32toh(fork->extents[i].startBlock);
         ip->hi_fork.first_extents[i].blockCount = be32toh(fork->extents[i].blockCount);
+    }
+
+    *ipp = ip;
+    return 0;
+
+}
+
+int
+hfsp_vget(struct mount * mp, struct HFSPlusForkData * fork, struct vnode ** vpp)
+{
+    struct hfsp_inode * ip;
+    struct hfspmount * hmp;
+    struct vnode * vp;
+    int error;
+
+    hmp = VFSTOHFSPMNT(mp);
+    error = hfsp_iget(hmp, fork, &ip);
+    if (error)
+    {
+        return error;
     }
 
     error = getnewvnode("hfsp", mp, &hfsp_vnodeops, &vp);
@@ -198,7 +245,26 @@ hfsp_vget_fork(struct mount * mp, struct HFSPlusForkData * fork, struct vnode **
 int
 hfsp_mount_volume(struct vnode * devvp, struct hfspmount * hmp, struct HFSPlusVolumeHeader * hfsph)
 {
-    
+    struct hfsp_inode * extentIp;
+    struct hfsp_btree *btreep;
+    int error;
+
+    error = hfsp_iget(hmp, &(hfsph->extentsFile), &extentIp);
+
+    if (error)
+    {
+        return error;
+    }
+
+    error = hfsp_btree_open(hmp, extentIp, &btreep);
+    if (error)
+    {
+        return error;
+    }
+
+    uprintf("Extent btree open\n Node size: %d\n Root node %d\n", btreep->hb_nodeSize, btreep->hb_rootNode);
+
+    uma_zfree(uma_inode, extentIp);
     return 0;
 }
 
@@ -215,7 +281,7 @@ hfsp_statfs(struct mount *mp, struct statfs *sbp)
     sbp->f_blocks = hfsmp->hm_totalBlocks;
     sbp->f_bfree = hfsmp->hm_freeBlocks;
     sbp->f_files = hfsmp->hm_fileCount;
-    
+
     return 0;
 }
 

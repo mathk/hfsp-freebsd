@@ -19,7 +19,7 @@ struct hfsp_btree {
 };
 
 
-int hfsp_btree_open(struct mount * mp, struct hfsp_inode * ip, struct hfsp_btree ** btreepp);
+int hfsp_btree_open(struct hfspmount * hmp, struct hfsp_inode * ip, struct hfsp_btree ** btreepp);
 int hfsp_bread_inode(struct vnode * devvp, struct hfsp_inode * ip, u_int64_t fileOffset, int size, struct buf ** bpp);
-
+int hfsp_btree_close(struct hfsp_btree * btreep);
 #endif /* _HFSP_BTREE_H_ */
