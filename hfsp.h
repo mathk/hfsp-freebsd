@@ -1,3 +1,4 @@
+#include <sys/malloc.h>
 
 #ifndef _HFSP_H_
 #define _HFSP_H_
@@ -121,32 +122,30 @@ struct hfsp_fork {
     struct hfsp_extent_descriptor first_extents[8];
 };
 
-struct hfsp_extend_fork {
-};
-
-struct hfsp_catalog_fork {
-
-};
-
 struct hfsp_inode {
+    struct vnode *      hi_vp;
     struct hfsp_fork    hi_fork;
     struct hfspmount *  hi_mount;
 };
 
 struct hfspmount {
-    u_int16_t           hm_signature;  /* ==kHFSPlusSigWord */
-    u_int16_t           hm_version;    /* ==kHFSPlusVersion */
-    u_int32_t           hm_blockSize;  /* Size in byte of allocation block */
-    u_int32_t           hm_totalBlocks;
-    u_int32_t           hm_freeBlocks;
-    u_int32_t           hm_fileCount;
-    u_int32_t           hm_physBlockSize;
-    struct cdev *       hm_dev;
-    struct vnode *      hm_devvp;
-    struct hfsp_inode * hm_extent_ip;
-    struct hfsp_inode * hm_catalog_ip;
-    struct g_consumer * hm_cp;
+    u_int16_t                   hm_signature;  /* ==kHFSPlusSigWord */
+    u_int16_t                   hm_version;    /* ==kHFSPlusVersion */
+    u_int32_t                   hm_blockSize;  /* Size in byte of allocation block */
+    u_int32_t                   hm_totalBlocks;
+    u_int32_t                   hm_freeBlocks;
+    u_int32_t                   hm_fileCount;
+    u_int32_t                   hm_physBlockSize;
+    struct cdev *               hm_dev;
+    struct vnode *              hm_devvp;
+    struct hfsp_btree *         hm_extent_bp;
+    struct hfsp_btree *         hm_catalog_bp;
+    struct g_consumer *         hm_cp;
 };
+
+
+int hfsp_bread_inode(struct hfsp_inode * ip, u_int64_t fileOffset, int size, struct buf ** bpp);
+void hfsp_irelease(struct hfsp_inode * ip);
 
 #define VFSTOHFSPMNT(mp)        ((struct hfspmount *)((mp)->mnt_data))
 #define HFSP_FIRSTEXTENT_SIZE   8

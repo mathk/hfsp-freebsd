@@ -32,6 +32,7 @@ static vfs_init_t       hfsp_init;
 static vfs_uninit_t     hfsp_uninit;
 
 int hfsp_iget(struct hfspmount * mp, struct HFSPlusForkData * fork, struct hfsp_inode ** ipp);
+void hfsp_freemnt(struct hfspmount * hmp);
 int hfsp_vget(struct mount * mp, struct HFSPlusForkData * fork, struct vnode ** vpp);
 int hfsp_mount_volume(struct vnode * devvp, struct hfspmount * hmp, struct HFSPlusVolumeHeader * hfsph);
 
@@ -78,7 +79,7 @@ hfsp_mount(struct mount *mp)
     struct buf *bp = NULL;
     struct g_consumer *cp = NULL;
     struct HFSPlusVolumeHeader hfsph;
-    struct hfspmount *hmp;
+    struct hfspmount *hmp = NULL;
 
     td = curthread;
     opts = mp->mnt_optnew;
@@ -144,7 +145,6 @@ hfsp_mount(struct mount *mp)
     hmp->hm_dev = devvp->v_rdev;
     hmp->hm_devvp = devvp;
 
-
     hfsp_mount_volume(devvp, hmp, &hfsph);
 
     mp->mnt_data = hmp;
@@ -164,6 +164,8 @@ hfsp_mount(struct mount *mp)
 out:
     if (bp)
         brelse(bp);
+    if (hmp)
+        hfsp_freemnt(hmp);
     if (cp != NULL) {
         DROP_GIANT();
         g_topology_lock();
@@ -245,26 +247,45 @@ hfsp_vget(struct mount * mp, struct HFSPlusForkData * fork, struct vnode ** vpp)
 int
 hfsp_mount_volume(struct vnode * devvp, struct hfspmount * hmp, struct HFSPlusVolumeHeader * hfsph)
 {
-    struct hfsp_inode * extentIp;
-    struct hfsp_btree *btreep;
+    struct hfsp_inode * ip;
+    struct hfsp_btree * btreep;
     int error;
 
-    error = hfsp_iget(hmp, &(hfsph->extentsFile), &extentIp);
+    error = hfsp_iget(hmp, &(hfsph->extentsFile), &ip);
+    if (error)
+    {
+        return error;
+    }
+    // Special file use the device vnode
+    ip->hi_vp = hmp->hm_devvp;
 
+    /* We first open the extent special file*/
+    error = hfsp_btree_open(ip, &hmp->hm_extent_bp);
     if (error)
     {
         return error;
     }
 
-    error = hfsp_btree_open(hmp, extentIp, &btreep);
+
+    btreep = hmp->hm_extent_bp;
+
+    uprintf("Extent btree open\n Node size: %d(<< %d)\n Root node %d\n Map node %d\n Tree depth %d\n", 
+            btreep->hb_nodeSize, btreep->hb_nodeShift, btreep->hb_rootNode, btreep->hb_mapNode, btreep->hb_treeDepth);
+
+    error = hfsp_iget(hmp, &(hfsph->catalogFile), &ip);
     if (error)
     {
         return error;
     }
+    ip->hi_vp = hmp->hm_devvp;
 
-    uprintf("Extent btree open\n Node size: %d\n Root node %d\n", btreep->hb_nodeSize, btreep->hb_rootNode);
+    error = hfsp_btree_open(ip, &hmp->hm_catalog_bp);
 
-    uma_zfree(uma_inode, extentIp);
+    btreep = hmp->hm_catalog_bp;
+
+    uprintf("Catalog btree open\n Node size: %d (<< %d) \n Root node %d\n Map node %d\n Tree depth %d\n", 
+            btreep->hb_nodeSize, btreep->hb_nodeShift, btreep->hb_rootNode, btreep->hb_mapNode, btreep->hb_treeDepth);
+
     return 0;
 }
 
@@ -285,13 +306,33 @@ hfsp_statfs(struct mount *mp, struct statfs *sbp)
     return 0;
 }
 
+void
+hfsp_irelease(struct hfsp_inode * ip)
+{
+    if (ip != NULL)
+        uma_zfree(uma_inode, ip);
+}
+
+void
+hfsp_freemnt(struct hfspmount * hmp)
+{
+    hfsp_btree_close(hmp->hm_extent_bp);
+    hfsp_btree_close(hmp->hm_catalog_bp);
+    free(hmp, M_HFSPMNT);
+}
+
 static int
 hfsp_unmount(struct mount *mp, int mntflags)
 {
     struct hfspmount * hmp;
+    struct g_consumer * cp;
+    struct vnode * devvp;
     uprintf("Unmounted device.\n");
 
     hmp = VFSTOHFSPMNT(mp);
+    cp = hmp->hm_cp;
+    devvp = hmp->hm_devvp;
+    hfsp_freemnt(hmp);
 
     DROP_GIANT();
     g_topology_lock();
@@ -300,7 +341,6 @@ hfsp_unmount(struct mount *mp, int mntflags)
     PICKUP_GIANT();
     vrele(hmp->hm_devvp);
 
-    free(hmp, M_HFSPMNT);
     mp->mnt_data = NULL;
     MNT_ILOCK(mp);
     mp->mnt_flag &= ~MNT_LOCAL;
