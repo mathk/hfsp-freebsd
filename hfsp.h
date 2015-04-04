@@ -1,4 +1,7 @@
 #include <sys/malloc.h>
+#include <sys/param.h>
+#include <sys/queue.h>
+#include <vm/uma.h>
 
 #ifndef _HFSP_H_
 #define _HFSP_H_
@@ -11,6 +14,7 @@
 struct hfspmount;
 
 MALLOC_DECLARE(M_HFSPMNT);
+MALLOC_DECLARE(M_HFSPKEYSEARCH);
 
 /* Signatures used to differentiate between HFS and HFS Plus volumes */
 enum {
@@ -24,6 +28,15 @@ enum {
     kHFSPlusMountVersion    = 0x31302E30,   /* '10.0' for Mac OS X */
     kHFSJMountVersion       = 0x4846534a,   /* 'HFSJ' for journaled HFS+ on OS X */
     kFSKMountVersion        = 0x46534b21    /* 'FSK!' for failed journal replay */
+};
+
+typedef u_int16_t hfsp_unichar;
+
+typedef u_int32_t   hfsp_cnid;
+
+struct hfsp_unistr {
+    u_int16_t       hu_len;
+    hfsp_unichar    hu_str[255];
 };
 
 /* HFS Plus extent descriptor */
@@ -143,6 +156,16 @@ struct hfspmount {
     struct g_consumer *         hm_cp;
 };
 
+struct hfsp_record_key {
+    u_int16_t   hk_len;
+    hfsp_cnid   hk_cnid;
+    struct hfsp_unistr hk_name;
+};
+
+struct hfsp_find_info {
+    struct hfsp_record_key * hf_search_keyp;
+    struct hfsp_record_key * hf_current_keyp;
+};
 
 int hfsp_bread_inode(struct hfsp_inode * ip, u_int64_t fileOffset, int size, struct buf ** bpp);
 void hfsp_irelease(struct hfsp_inode * ip);
@@ -150,5 +173,6 @@ void hfsp_irelease(struct hfsp_inode * ip);
 #define VFSTOHFSPMNT(mp)        ((struct hfspmount *)((mp)->mnt_data))
 #define HFSP_FIRSTEXTENT_SIZE   8
 extern struct vop_vector hfsp_vnodeops;
+extern uma_zone_t   uma_record_key;
 
 #endif /* !_HFSP_H_ */

@@ -1,5 +1,4 @@
 #include <sys/param.h>
-#include <sys/queue.h>
 #include <sys/systm.h>
 #include <sys/types.h>
 #include <sys/namei.h>
@@ -14,6 +13,8 @@
 #include <sys/mutex.h>
 #include <sys/malloc.h>
 #include <sys/endian.h>
+#include <sys/kobj.h>
+#include <sys/iconv.h>
 
 #include <geom/geom.h>
 #include <geom/geom_vfs.h>
@@ -24,6 +25,7 @@
 MALLOC_DEFINE(M_HFSPMNT, "hfsp_mount", "HFS Plus mount structure");
 
 static uma_zone_t       uma_inode;
+uma_zone_t       uma_record_key;
 
 static vfs_mount_t      hfsp_mount;
 static vfs_unmount_t    hfsp_unmount;
@@ -35,6 +37,7 @@ int hfsp_iget(struct hfspmount * mp, struct HFSPlusForkData * fork, struct hfsp_
 void hfsp_freemnt(struct hfspmount * hmp);
 int hfsp_vget(struct mount * mp, struct HFSPlusForkData * fork, struct vnode ** vpp);
 int hfsp_mount_volume(struct vnode * devvp, struct hfspmount * hmp, struct HFSPlusVolumeHeader * hfsph);
+void udump(char * buff, int size);
 
 static struct vfsops hfsp_vfsops = {
 //    .vfs_fhtovp =   NULL,
@@ -49,12 +52,32 @@ static struct vfsops hfsp_vfsops = {
 };
 VFS_SET(hfsp_vfsops, hfsp, 0);
 
+MODULE_DEPEND(hfsp_mod, libiconv, 2, 2, 2);
+
+void
+udump(char * buff, int size)
+{
+    int i, left;
+    left = size;
+    do
+    {
+        for(i = 0; i < 8 && left > 0; i++, left--)
+        {
+            uprintf("%02x", buff[size - left]);
+        }
+        uprintf("\n");
+    } while (left > 0);
+}
+
 static int
 hfsp_init(struct vfsconf * conf)
 {
     uprintf("HFS+ module initialized\n");
     uma_inode = uma_zcreate("HFS+ inode", sizeof(struct hfsp_inode), NULL, NULL, NULL, NULL,
                             UMA_ALIGN_PTR, 0);
+
+    uma_record_key = uma_zcreate("HFS+ key record", sizeof(struct hfsp_record_key), NULL, NULL, NULL, NULL,
+                                 UMA_ALIGN_PTR, 0);
     return 0;
 }
 
@@ -62,6 +85,7 @@ static int
 hfsp_uninit(struct vfsconf * conf)
 {
     uma_zdestroy(uma_inode);
+    uma_zdestroy(uma_record_key);
     uprintf("HFS+ module uninitialized\n");
     return 0;
 }
@@ -241,7 +265,6 @@ hfsp_vget(struct mount * mp, struct HFSPlusForkData * fork, struct vnode ** vpp)
 
     *vpp = vp;
     return (0);
-
 }
 
 int
@@ -249,6 +272,11 @@ hfsp_mount_volume(struct vnode * devvp, struct hfspmount * hmp, struct HFSPlusVo
 {
     struct hfsp_inode * ip;
     struct hfsp_btree * btreep;
+    struct hfsp_node * np;
+    struct hfsp_find_info fi;
+    size_t lenIn, lenOut;
+    u_int16_t * in,  * out;
+    void * hconvp;
     int error;
 
     error = hfsp_iget(hmp, &(hfsph->extentsFile), &ip);
@@ -285,6 +313,38 @@ hfsp_mount_volume(struct vnode * devvp, struct hfspmount * hmp, struct HFSPlusVo
 
     uprintf("Catalog btree open\n Node size: %d (<< %d) \n Root node %d\n Map node %d\n Tree depth %d\n", 
             btreep->hb_nodeSize, btreep->hb_nodeShift, btreep->hb_rootNode, btreep->hb_mapNode, btreep->hb_treeDepth);
+
+    uprintf("Read Node number: %d\n", btreep->hb_firstLeafNode);
+    error = hfsp_get_btnode(btreep, btreep->hb_firstLeafNode, &np);
+    if (error)
+        return error;
+    uprintf("Openning first leaf node. Record nbrs: %d, kind %d\n, Buffer data %lx\nFirst record table offset %d\n", np->hn_numRecords, np->hn_kind, (u_int64_t)np->hn_beginBuf, be16toh(*(np->hn_recordTable - 1)));
+
+    hfsp_init_find_info(&fi);
+
+    hfsp_bnode_read_catalogue_key(np, 0, fi.hf_search_keyp);
+
+    error = iconv_open("UTF-8", "UTF-16BE", &hconvp);
+
+    if (!error)
+    {
+        lenIn = fi.hf_search_keyp->hk_name.hu_len * 2;
+        lenOut = 255;
+        in = fi.hf_search_keyp->hk_name.hu_str;
+        out = fi.hf_current_keyp->hk_name.hu_str;
+        error = iconv_conv(hconvp, (const char**)&in, &lenIn,
+               (char**)&out, &lenOut);
+        iconv_close(hconvp);
+
+        uprintf("Name length: %d, First record name %s\n", fi.hf_search_keyp->hk_name.hu_len, (char *)fi.hf_current_keyp->hk_name.hu_str);
+
+        udump((char*)fi.hf_search_keyp->hk_name.hu_str, fi.hf_search_keyp->hk_name.hu_len * 2);
+        udump((char*)fi.hf_current_keyp->hk_name.hu_str, fi.hf_search_keyp->hk_name.hu_len * 2);
+    }
+
+    hfsp_destroy_find_info(&fi);
+
+    hfsp_release_btnode(np);
 
     return 0;
 }

@@ -20,6 +20,7 @@ struct hfsp_btree {
     u_int16_t           hb_nodeShift;
     u_int16_t           hb_treeDepth;
     u_int32_t           hb_mapNode;
+    u_int32_t           hb_firstLeafNode;
 };
 
 /* In memory node */
@@ -30,7 +31,8 @@ struct hfsp_node {
     u_int32_t       hn_prev;
     u_int16_t       hn_numRecords;
     u_int16_t       hn_nodeSize;
-    void *          hn_recordTable;     /* Jump table to recorde */
+    u_int8_t *      hn_beginBuf;
+    u_int16_t *     hn_recordTable;     /* Jump table to records */
     __int8_t        hn_kind;
     u_int8_t        hn_height;
     bool            hn_inMemory;
@@ -38,5 +40,9 @@ struct hfsp_node {
 
 int hfsp_btree_open(struct hfsp_inode * ip, struct hfsp_btree ** btreepp);
 void hfsp_btree_close(struct hfsp_btree * btreep);
-int hfsp_get_btnode(struct hfsp_btree * btreep, u_int32_t num);
+void hfsp_release_btnode(struct hfsp_node * np);
+int hfsp_init_find_info(struct hfsp_find_info * fip);
+void hfsp_destroy_find_info(struct hfsp_find_info * fip);
+int hfsp_bnode_read_catalogue_key(struct hfsp_node * np, int recidx, struct hfsp_record_key * rkp);
+int hfsp_get_btnode(struct hfsp_btree * btreep, u_int32_t num, struct hfsp_node ** npp);
 #endif /* _HFSP_BTREE_H_ */
