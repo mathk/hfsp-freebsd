@@ -11,6 +11,7 @@
 
 MALLOC_DEFINE(M_HFSPBTREE, "hfsp_btree", "HFS+ B-Tree");
 MALLOC_DEFINE(M_HFSPNODE, "hfsp_node", "HFS+ B-Tree node");
+MALLOC_DEFINE(M_HFSPREC, "hfsp_record", "HFS+ B-Tree record");
 
 int
 hfsp_btree_open(struct hfsp_inode * ip, struct hfsp_btree ** btreepp)
@@ -149,24 +150,73 @@ hfsp_destroy_find_info(struct hfsp_find_info * fip)
 #define PBE16TOH(x) be16toh(*(u_int16_t*)(x))
 #define PBE32TOH(x) be32toh(*(u_int32_t*)(x))
 
-int
-hfsp_bnode_read_catalogue_key(struct hfsp_node * np, int recidx, struct hfsp_record_key * rkp)
+u_int16_t
+hfsp_brec_read_u16(struct hfsp_record * rp, u_int16_t offset)
 {
-    u_int16_t off;
-    //int i;
-    if (!np->hn_inMemory)
+    return PBE16TOH(rp->hr_node->hn_beginBuf + rp->hr_offset + offset);
+}
+
+
+u_int32_t
+hfsp_brec_read_u32(struct hfsp_record * rp, u_int16_t offset)
+{
+    return PBE32TOH(rp->hr_node->hn_beginBuf + rp->hr_offset + offset);
+}
+
+void
+hfsp_brec_bcopy(struct hfsp_record * rp, u_int16_t offset, void * buf, size_t len)
+{
+    bcopy(rp->hr_node->hn_beginBuf + rp->hr_offset + offset, buf, len);
+}
+
+int
+hfsp_brec_catalogue_read_key(struct hfsp_record * rp, struct hfsp_record_key * rkp)
+{
+
+    rkp->hk_len = hfsp_brec_read_u16(rp, 0);
+    rkp->hk_cnid = hfsp_brec_read_u16(rp, sizeof(rkp->hk_len));
+    rkp->hk_name.hu_len = hfsp_brec_read_u16(rp, sizeof(rkp->hk_len) + sizeof(rkp->hk_cnid));
+    if (rkp->hk_name.hu_len * 2 > sizeof(rkp->hk_name.hu_str) - 2)
     {
         return EINVAL;
     }
 
-    off = be16toh(*(np->hn_recordTable - (1 + recidx)));
-
-    rkp->hk_len = PBE16TOH(np->hn_beginBuf + off);
-    rkp->hk_cnid = PBE32TOH(np->hn_beginBuf + off + sizeof(rkp->hk_len));
-    rkp->hk_name.hu_len = PBE16TOH(np->hn_beginBuf + off + sizeof(rkp->hk_len) + sizeof(rkp->hk_cnid));
-    bcopy(np->hn_beginBuf + off + sizeof(rkp->hk_len) + sizeof(rkp->hk_cnid) + sizeof(rkp->hk_name.hu_len), 
-          rkp->hk_name.hu_str,
-          max(sizeof(rkp->hk_name.hu_str), rkp->hk_name.hu_len * 2));
+    hfsp_brec_bcopy(rp,
+                    sizeof(rkp->hk_len) + sizeof(rkp->hk_cnid) + sizeof(rkp->hk_name.hu_len),
+                    rkp->hk_name.hu_str,
+                    rkp->hk_name.hu_len * 2);
 
     return 0;
+}
+
+int
+hfsp_brec_catalogue_read_thread(struct hfsp_node *np, int recidx, struct hfsp_record ** recpp)
+{
+    struct hfsp_record * recp;
+    int error;
+    u_int16_t currentOffset;
+
+    recp = malloc(sizeof(struct hfsp_record), M_HFSPREC, M_WAITOK | M_ZERO);
+    if (!recp)
+    {
+        return ENOMEM;
+    }
+
+    recp->hr_node = np;
+    recp->hr_offset = be16toh(*(np->hn_recordTable - (1 + recidx)));
+
+    error = hfsp_brec_catalogue_read_key(recp, &recp->hr_key);
+    if (error)
+        return error;
+
+    currentOffset = recp->hr_key.hk_len + sizeof(recp->hr_key.hk_len);
+    recp->hr_thread.hct_recordType = hfsp_brec_read_u16(recp, currentOffset);
+
+    return 0;
+}
+
+void
+hfsp_brec_release_record(struct hfsp_record * rp)
+{
+    free(rp, M_HFSPREC);
 }

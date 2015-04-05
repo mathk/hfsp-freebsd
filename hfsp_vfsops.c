@@ -273,11 +273,8 @@ hfsp_mount_volume(struct vnode * devvp, struct hfspmount * hmp, struct HFSPlusVo
     struct hfsp_inode * ip;
     struct hfsp_btree * btreep;
     struct hfsp_node * np;
-    struct hfsp_find_info fi;
-    size_t lenIn, lenOut;
-    u_int16_t * in,  * out;
-    void * hconvp;
-    int error;
+    //struct hfsp_record * rp;
+    int error, i;
 
     error = hfsp_iget(hmp, &(hfsph->extentsFile), &ip);
     if (error)
@@ -315,34 +312,15 @@ hfsp_mount_volume(struct vnode * devvp, struct hfspmount * hmp, struct HFSPlusVo
             btreep->hb_nodeSize, btreep->hb_nodeShift, btreep->hb_rootNode, btreep->hb_mapNode, btreep->hb_treeDepth);
 
     uprintf("Read Node number: %d\n", btreep->hb_firstLeafNode);
-    error = hfsp_get_btnode(btreep, btreep->hb_firstLeafNode, &np);
+    error = hfsp_get_btnode(btreep, btreep->hb_rootNode, &np);
     if (error)
         return error;
     uprintf("Openning first leaf node. Record nbrs: %d, kind %d\n, Buffer data %lx\nFirst record table offset %d\n", np->hn_numRecords, np->hn_kind, (u_int64_t)np->hn_beginBuf, be16toh(*(np->hn_recordTable - 1)));
 
-    hfsp_init_find_info(&fi);
-
-    hfsp_bnode_read_catalogue_key(np, 0, fi.hf_search_keyp);
-
-    error = iconv_open("UTF-8", "UTF-16BE", &hconvp);
-
-    if (!error)
+    for (i = 0;  i < np->hn_numRecords; i++)
     {
-        lenIn = fi.hf_search_keyp->hk_name.hu_len * 2;
-        lenOut = 255;
-        in = fi.hf_search_keyp->hk_name.hu_str;
-        out = fi.hf_current_keyp->hk_name.hu_str;
-        error = iconv_conv(hconvp, (const char**)&in, &lenIn,
-               (char**)&out, &lenOut);
-        iconv_close(hconvp);
-
-        uprintf("Name length: %d, First record name %s\n", fi.hf_search_keyp->hk_name.hu_len, (char *)fi.hf_current_keyp->hk_name.hu_str);
-
-        udump((char*)fi.hf_search_keyp->hk_name.hu_str, fi.hf_search_keyp->hk_name.hu_len * 2);
-        udump((char*)fi.hf_current_keyp->hk_name.hu_str, fi.hf_search_keyp->hk_name.hu_len * 2);
+        uprintf("Reading record %d\n", i);
     }
-
-    hfsp_destroy_find_info(&fi);
 
     hfsp_release_btnode(np);
 
