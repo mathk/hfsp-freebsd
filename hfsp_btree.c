@@ -189,8 +189,8 @@ hfsp_brec_read_unistr(struct hfsp_record * rp, u_int16_t offset, struct hfsp_uni
 void 
 hfsp_brec_catalogue_read_init()
 {
-    brec_read_op[HFSP_FOLDER_RECORD - 1] = NULL;
-    brec_read_op[HFSP_FILE_RECORD - 1] = NULL;
+    brec_read_op[HFSP_FOLDER_RECORD - 1] = hfsp_brec_catalogue_read_folder;
+    brec_read_op[HFSP_FILE_RECORD - 1] = hfsp_brec_catalogue_read_file;
     brec_read_op[HFSP_FOLDER_THREAD_RECORD - 1] = hfsp_brec_catalogue_read_thread;
     brec_read_op[HFSP_FILE_THREAD_RECORD - 1] = hfsp_brec_catalogue_read_thread;
 }
@@ -238,6 +238,7 @@ hfsp_brec_catalogue_read(struct hfsp_node * np, int recidx, struct hfsp_record *
         free(recp, M_HFSPREC);
         return error;
     }
+    *recpp = recp;
     return 0;
 }
 
@@ -251,6 +252,28 @@ hfsp_brec_catalogue_read_thread(struct hfsp_record * recp)
 
     curOffset = curOffset + sizeof(recp->hr_thread.hrt_parentCnid);
     return hfsp_brec_read_unistr(recp, curOffset, &recp->hr_thread.hrt_name);
+}
+
+int
+hfsp_brec_catalogue_read_folder(struct hfsp_record * recp)
+{
+    int curOffset;
+
+    curOffset = recp->hr_dataOffset + sizeof(recp->hr_type);
+    recp->hr_folder.hrfo_flags = hfsp_brec_read_u16(recp, curOffset);
+    curOffset += sizeof(recp->hr_folder.hrfo_flags);
+    recp->hr_folder.hrfo_valance = hfsp_brec_read_u32(recp, curOffset);
+    curOffset += sizeof(recp->hr_folder.hrfo_valance);
+    recp->hr_folder.hrfo_folderCnid = hfsp_brec_read_u32(recp, curOffset);
+    curOffset += sizeof(recp->hr_folder.hrfo_folderCnid);
+    recp->hr_folder.hrfo_createDate = hfsp_brec_read_u32(recp, curOffset);
+    return 0;
+}
+
+int
+hfsp_brec_catalogue_read_file(struct hfsp_record * recp)
+{
+    return 0;
 }
 
 void

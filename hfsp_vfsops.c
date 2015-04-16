@@ -39,6 +39,8 @@ int hfsp_vget(struct mount * mp, struct HFSPlusForkData * fork, struct vnode ** 
 int hfsp_mount_volume(struct vnode * devvp, struct hfspmount * hmp, struct HFSPlusVolumeHeader * hfsph);
 void udump(char * buff, int size);
 
+void uprint_record(struct hfsp_record * rp);
+
 static struct vfsops hfsp_vfsops = {
 //    .vfs_fhtovp =   NULL,
     .vfs_init =     hfsp_init,
@@ -54,21 +56,6 @@ VFS_SET(hfsp_vfsops, hfsp, 0);
 
 MODULE_DEPEND(hfsp_mod, libiconv, 2, 2, 2);
 
-void
-udump(char * buff, int size)
-{
-    int i, left;
-    left = size;
-    do
-    {
-        for(i = 0; i < 8 && left > 0; i++, left--)
-        {
-            uprintf("%02x", buff[size - left]);
-        }
-        uprintf("\n");
-    } while (left > 0);
-}
-
 static int
 hfsp_init(struct vfsconf * conf)
 {
@@ -78,6 +65,8 @@ hfsp_init(struct vfsconf * conf)
 
     uma_record_key = uma_zcreate("HFS+ key record", sizeof(struct hfsp_record_key), NULL, NULL, NULL, NULL,
                                  UMA_ALIGN_PTR, 0);
+
+    hfsp_brec_catalogue_read_init();
     return 0;
 }
 
@@ -273,7 +262,7 @@ hfsp_mount_volume(struct vnode * devvp, struct hfspmount * hmp, struct HFSPlusVo
     struct hfsp_inode * ip;
     struct hfsp_btree * btreep;
     struct hfsp_node * np;
-    //struct hfsp_record * rp;
+    struct hfsp_record * rp;
     int error, i;
 
     error = hfsp_iget(hmp, &(hfsph->extentsFile), &ip);
@@ -320,10 +309,15 @@ hfsp_mount_volume(struct vnode * devvp, struct hfspmount * hmp, struct HFSPlusVo
     for (i = 0;  i < np->hn_numRecords; i++)
     {
         uprintf("Reading record %d\n", i);
+        error = hfsp_brec_catalogue_read(np, i, &rp);
+        if (!error)
+        {
+            uprint_record(rp);
+            hfsp_brec_release_record(rp);
+        }
     }
 
     hfsp_release_btnode(np);
-
     return 0;
 }
 

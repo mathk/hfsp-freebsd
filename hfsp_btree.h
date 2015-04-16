@@ -75,11 +75,13 @@ struct hfsp_record {
     union {
         struct hfsp_record_common common;
         struct hfsp_record_thread thread;
+        struct hfsp_record_folder folder;
     } hr_data;
 };
 
 #define hr_type     hr_data.common.hrc_recordType
 #define hr_thread   hr_data.thread
+#define hr_folder   hr_data.folder
 
 int hfsp_btree_open(struct hfsp_inode * ip, struct hfsp_btree ** btreepp);
 void hfsp_btree_close(struct hfsp_btree * btreep);
@@ -133,6 +135,22 @@ int hfsp_brec_read_unistr(struct hfsp_record * rp, u_int16_t offset, struct hfsp
  * Return 0 on success.
  */
 int hfsp_brec_catalogue_read_thread(struct hfsp_record * recp);
+
+/*
+ * Reads a record as a folder record.
+ * Function used internally.
+ * recp: Pointer to the hfsp_record that will be fill upon exit.
+ * Return 0 on success.
+ */
+int hfsp_brec_catalogue_read_folder(struct hfsp_record * recp);
+
+/*
+ * Reads a record as a file record.
+ * Function used internally.
+ * recp: Pointer to the hfsp_record that will be fill upon exit.
+ * Return 0 on success.
+ */
+int hfsp_brec_catalogue_read_file(struct hfsp_record * recp);
 
 /*
  * Read a catalogue record entry from a node.

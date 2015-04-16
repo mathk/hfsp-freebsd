@@ -1,4 +1,7 @@
+#include <sys/param.h>
+#include <sys/systm.h>
 #include <sys/malloc.h>
+#include <sys/buf.h>
 #include <sys/param.h>
 #include <sys/queue.h>
 #include <vm/uma.h>
@@ -34,6 +37,11 @@ typedef u_int16_t hfsp_unichar;
 
 typedef u_int32_t   hfsp_cnid;
 
+/*
+ * Structure representing a HFS+ unicode string.
+ * The hu_str member is expecting to be a copy of what is found
+ * on disk (BE unichar) whereas the hu_len is convert to host endianness.
+ */
 struct hfsp_unistr {
     u_int16_t       hu_len;
     hfsp_unichar    hu_str[255];
