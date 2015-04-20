@@ -115,6 +115,12 @@ void hfsp_release_btnode(struct hfsp_node * np);
 int hfsp_get_btnode(struct hfsp_btree * btreep, u_int32_t num, struct hfsp_node ** npp);
 int hfsp_brec_catalogue_read_key(struct hfsp_record * np, struct hfsp_record_key * rkp);
 
+/*
+ * Copy a hfsp_record_key to a other.
+ * dstp: Pointer to the destination hfsp_record_key.
+ * srcp: Pointer to the source hfsp_record_key.
+ */
+void hfsp_copy_record_key(struct hfsp_record_key * dstp, struct hfsp_record_key * srcp);
 
 /*
  * Find the record for a given cnid.

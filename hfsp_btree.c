@@ -324,6 +324,15 @@ done:
     return 0;
 }
 
+void
+hfsp_copy_record_key(struct hfsp_record_key * dstp, struct hfsp_record_key * srcp)
+{
+    int len;
+
+    len = srcp->hk_len + sizeof(srcp->hk_len);
+    bcopy((void*)srcp, (void*)dstp, len);
+}
+
 int
 hfsp_brec_noops(struct hfsp_node * np, int recidx, struct hfsp_record ** recpp)
 {

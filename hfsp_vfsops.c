@@ -20,6 +20,8 @@
 #include <geom/geom_vfs.h>
 
 #include "hfsp.h"
+#include "hfsp_unicode.h"
+#include "hfsp_debug.h"
 #include "hfsp_btree.h"
 
 MALLOC_DEFINE(M_HFSPMNT, "hfsp_mount", "HFS Plus mount structure");
@@ -345,6 +347,20 @@ hfsp_mount_volume(struct vnode * devvp, struct hfspmount * hmp, struct HFSPlusVo
     }
 
     uprintf("* Find the proper record.\n");
+
+    hfsp_unicode_copy(&rp->hr_thread.hrt_name, &rkp->hk_name);
+    rkp->hk_cnid = rp->hr_thread.hrt_parentCnid;
+    rkp->hk_len = sizeof(rkp->hk_cnid) + sizeof(rkp->hk_name.hu_len) + rkp->hk_name.hu_len;
+
+    uprintf("Looking for record key.\n");
+
+    uprint_record_key(rkp);
+
+    error = hfsp_btree_find(btreep, rkp, &rp);
+    if (!error)
+    {
+        uprint_record(rp);
+    }
 
     free(rkp, M_HFSPKEY);
     hfsp_brec_release_record(&rp);

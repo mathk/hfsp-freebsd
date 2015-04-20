@@ -244,6 +244,12 @@ hfsp_foldcase(u_int16_t ch)
     return ch;
 }
 
+void
+hfsp_unicode_copy(struct hfsp_unistr * srcp, struct hfsp_unistr * dstp)
+{
+    bcopy((void*)srcp, (void*)dstp, dstp->hu_len + sizeof(dstp->hu_len));
+}
+
 int
 hfsp_unicode_cmp(struct hfsp_unistr * lstrp, struct hfsp_unistr * rstrp)
 {
