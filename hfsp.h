@@ -18,6 +18,7 @@ struct hfspmount;
 
 MALLOC_DECLARE(M_HFSPMNT);
 MALLOC_DECLARE(M_HFSPKEYSEARCH);
+MALLOC_DECLARE(M_HFSPKEY);
 
 /* Signatures used to differentiate between HFS and HFS Plus volumes */
 enum {
@@ -163,18 +164,6 @@ struct hfspmount {
     struct hfsp_btree *         hm_catalog_bp;
     struct g_consumer *         hm_cp;
 };
-
-struct hfsp_record_key {
-    u_int16_t   hk_len;
-    hfsp_cnid   hk_cnid;
-    struct hfsp_unistr hk_name;
-};
-
-struct hfsp_find_info {
-    struct hfsp_record_key * hf_search_keyp;
-    struct hfsp_record_key * hf_current_keyp;
-};
-
 int hfsp_bread_inode(struct hfsp_inode * ip, u_int64_t fileOffset, int size, struct buf ** bpp);
 void hfsp_irelease(struct hfsp_inode * ip);
 

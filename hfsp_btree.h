@@ -19,6 +19,21 @@ enum {
     HFSP_FILE_THREAD_RECORD     = 0x4
 };
 
+enum {
+    HFSP_NODE_INDEX     = 0,
+    HFSP_NODE_HEADER    = 1,
+    HFSP_NODE_MAP       = 2,
+    HFSP_NODE_LEAF      = -1
+};
+
+struct hfsp_node;
+struct hfsp_record;
+
+/*
+ * Operation that read a record depending on the node type.
+ */
+typedef int (*btree_record_read_t)(struct hfsp_node * bp, int recidx, struct hfsp_record ** recpp);
+
 #define RECORD_TYPE_COUNT HFSP_FILE_THREAD_RECORD
 
 /* Btree held in memory */
@@ -35,17 +50,18 @@ struct hfsp_btree {
 
 /* In memory node */
 struct hfsp_node {
-    struct buf *    hn_buffer;          /* Buffer containing the read data */
-    u_int64_t       hn_offset;          /* Offset from the special file. */
-    u_int32_t       hn_next;
-    u_int32_t       hn_prev;
-    u_int16_t       hn_numRecords;
-    u_int16_t       hn_nodeSize;
-    u_int8_t *      hn_beginBuf;
-    u_int16_t *     hn_recordTable;     /* Jump table to records */
-    __int8_t        hn_kind;
-    u_int8_t        hn_height;
-    bool            hn_inMemory;
+    struct buf *        hn_buffer;          /* Buffer containing the read data */
+    u_int64_t           hn_offset;          /* Offset from the special file. */
+    u_int32_t           hn_next;
+    u_int32_t           hn_prev;
+    u_int16_t           hn_numRecords;
+    u_int16_t           hn_nodeSize;
+    u_int8_t *          hn_beginBuf;
+    u_int16_t *         hn_recordTable;     /* Jump table to records */
+    __int8_t            hn_kind;
+    u_int8_t            hn_height;
+    bool                hn_inMemory;
+    btree_record_read_t hn_read;
 };
 
 struct hfsp_record_thread {
@@ -67,6 +83,14 @@ struct hfsp_record_common {
     __int16_t           hrc_recordType;
 };
 
+/* Key of a record */
+struct hfsp_record_key {
+    u_int16_t   hk_len;
+    hfsp_cnid   hk_cnid;
+    struct hfsp_unistr hk_name;
+};
+
+/* Record structure */
 struct hfsp_record {
     struct hfsp_record_key  hr_key;
     struct hfsp_node *      hr_node;
@@ -76,20 +100,35 @@ struct hfsp_record {
         struct hfsp_record_common common;
         struct hfsp_record_thread thread;
         struct hfsp_record_folder folder;
+        u_int32_t   index;
     } hr_data;
 };
 
 #define hr_type     hr_data.common.hrc_recordType
 #define hr_thread   hr_data.thread
 #define hr_folder   hr_data.folder
+#define hr_index    hr_data.index
 
 int hfsp_btree_open(struct hfsp_inode * ip, struct hfsp_btree ** btreepp);
 void hfsp_btree_close(struct hfsp_btree * btreep);
 void hfsp_release_btnode(struct hfsp_node * np);
-int hfsp_init_find_info(struct hfsp_find_info * fip);
-void hfsp_destroy_find_info(struct hfsp_find_info * fip);
 int hfsp_get_btnode(struct hfsp_btree * btreep, u_int32_t num, struct hfsp_node ** npp);
 int hfsp_brec_catalogue_read_key(struct hfsp_record * np, struct hfsp_record_key * rkp);
+
+
+/*
+ * Find the record for a given cnid.
+ * btree: The btree where to find the record.
+ * cnid: The cnid to find.
+ * recpp: Address to pointer to the hfsp_record that will be fill upon exit.
+ */
+int hfsp_btree_find(struct hfsp_btree * btreep, struct hfsp_record_key * kp, struct hfsp_record ** recpp);
+
+/*
+ * Compare record key.
+ * XXX Todo the HFSX case sensitive comparaison.
+ */
+int hfsp_brec_key_cmp(struct hfsp_record_key * lkp, struct hfsp_record_key * rkp);
 
 /*
  * Initialize read routine for catalogue record.
@@ -156,13 +195,52 @@ int hfsp_brec_catalogue_read_file(struct hfsp_record * recp);
  * Read a catalogue record entry from a node.
  * np: Pointer to a hfsp_node structure that contain the record. Node should be in memory.
  * recidx: Index of the record to read.
- * recpp: Address of a pointer to a hfsp_record that will be fill upon exit.
+ * recpp: Address of a pointer to a hfsp_record. If it point to NULL the record will be allocated.
+ * Otherwise it will assume that the structure is allocated.
  */
 int hfsp_brec_catalogue_read(struct hfsp_node * np, int recidx, struct hfsp_record ** recpp);
 
 /*
+ * Same as hfsp_brec_catalogue_read but only reads the key part of the record.
+ * This is used for lookup avoiding the overhead of reading the complete record.
+ * np: Pointer to a hfsp_node structure that contain the record. Node should be in memory.
+ * recidx: Index of the record to read.
+ * recpp: Address of a pointer to a hfsp_record. If it point to NULL the record will be allocated.
+ * Otherwise it will assume that the structure is allocated.
+ */
+int hfsp_brec_catalogue_lookup_read(struct hfsp_node * np, int recidx, struct hfsp_record ** recpp);
+
+/*
+ * Read a record as an index in the catalogue file.
+ * np: Pointer to a hfsp_node structure that contain the record. Node should be in memory.
+ * recidx: Index of the record to read.
+ * recpp: Address of a pointer to a hfsp_record. If it point to NULL the record will be allocated.
+ * Otherwise it will assume that the structure is allocated.
+ */
+int hfsp_brec_catalogue_index_read(struct hfsp_node * np, int recidx, struct hfsp_record ** recpp);
+
+/*
+ * Default read operation for reading a record.
+ * XXX Manly used in development stage.
+ */
+int hfsp_brec_noops(struct hfsp_node * np, int recidx, struct hfsp_record ** recpp);
+
+/*
+ * Search for a record that best match the key within a node.
+ * np: Pointer to a hfsp_node structure.
+ * kp: Pointer to a hfsp_record_key structure.
+ * recpp: Address of a pointer to a hfsp_record. If it point to NULL the record will be allocated.
+ * Otherwise it will assume that the structure is allocated.
+ */
+int hfsp_brec_find(struct hfsp_node * np, struct hfsp_record_key * kp, struct hfsp_record ** recpp);
+/*
+ * Return a new structure that can hold record information.
+ */
+struct hfsp_record * hfsp_brec_alloc(void);
+
+/*
  * Release a hfsp_record structure.
  */
-void hfsp_brec_release_record(struct hfsp_record * rp);
+void hfsp_brec_release_record(struct hfsp_record ** rpp);
 
 #endif /* _HFSP_BTREE_H_ */

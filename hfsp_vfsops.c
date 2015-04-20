@@ -23,6 +23,7 @@
 #include "hfsp_btree.h"
 
 MALLOC_DEFINE(M_HFSPMNT, "hfsp_mount", "HFS Plus mount structure");
+MALLOC_DEFINE(M_HFSPKEY, "hfsp_record_key", "HFS+ record key");
 
 static uma_zone_t       uma_inode;
 uma_zone_t       uma_record_key;
@@ -263,6 +264,7 @@ hfsp_mount_volume(struct vnode * devvp, struct hfspmount * hmp, struct HFSPlusVo
     struct hfsp_btree * btreep;
     struct hfsp_node * np;
     struct hfsp_record * rp;
+    struct hfsp_record_key * rkp;
     int error, i;
 
     error = hfsp_iget(hmp, &(hfsph->extentsFile), &ip);
@@ -306,6 +308,13 @@ hfsp_mount_volume(struct vnode * devvp, struct hfspmount * hmp, struct HFSPlusVo
         return error;
     uprintf("Openning first leaf node. Record nbrs: %d, kind %d\n, Buffer data %lx\nFirst record table offset %d\n", np->hn_numRecords, np->hn_kind, (u_int64_t)np->hn_beginBuf, be16toh(*(np->hn_recordTable - 1)));
 
+    rp = hfsp_brec_alloc();
+    if (rp == NULL)
+    {
+        error = ENOMEM;
+        hfsp_release_btnode(np);
+        return error;
+    }
     for (i = 0;  i < np->hn_numRecords; i++)
     {
         uprintf("Reading record %d\n", i);
@@ -313,12 +322,34 @@ hfsp_mount_volume(struct vnode * devvp, struct hfspmount * hmp, struct HFSPlusVo
         if (!error)
         {
             uprint_record(rp);
-            hfsp_brec_release_record(rp);
         }
     }
 
+
     hfsp_release_btnode(np);
-    return 0;
+
+    uprintf("* Find the root record thread first.\n");
+
+    rkp = malloc(sizeof(*rkp), M_HFSPKEY, M_WAITOK | M_ZERO);
+
+    if (rkp == NULL)
+    {
+        return ENOMEM;
+    }
+
+    rkp->hk_cnid = 2;
+    error = hfsp_btree_find(btreep, rkp, &rp);
+    if (!error)
+    {
+        uprint_record(rp);
+    }
+
+    uprintf("* Find the proper record.\n");
+
+    free(rkp, M_HFSPKEY);
+    hfsp_brec_release_record(&rp);
+
+    return error;
 }
 
 

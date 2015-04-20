@@ -8,6 +8,7 @@
 #include <sys/endian.h>
 
 #include "hfsp_btree.h"
+#include "hfsp_unicode.h"
 
 MALLOC_DEFINE(M_HFSPBTREE, "hfsp_btree", "HFS+ B-Tree");
 MALLOC_DEFINE(M_HFSPNODE, "hfsp_node", "HFS+ B-Tree node");
@@ -45,7 +46,7 @@ hfsp_btree_open(struct hfsp_inode * ip, struct hfsp_btree ** btreepp)
     btreeRaw = (struct BTNodeDescriptor*)bp->b_data;
     btHeaderRaw = (struct BTHeaderRec*)(bp->b_data + sizeof(*btreeRaw));
 
-    uprintf("open: Buffer size %ld, Buffer offset %ld\nNumber of records in header node: %d\n", 
+    uprintf("hfsp_btree_open: Buffer size %ld, Buffer offset %ld, Number of records in header node: %d\n", 
             bp->b_bufsize, bp->b_offset, be16toh(btreeRaw->numRecords));
 
     btreep->hb_mapNode  = be32toh(btreeRaw->fLink);
@@ -78,7 +79,7 @@ hfsp_get_btnode(struct hfsp_btree * btreep, u_int32_t num, struct hfsp_node ** n
     {
         return error;
     }
-    uprintf("Bcount %ld, Bufsize %ld, Bresid %ld\n", bp->b_bcount, bp->b_bufsize, bp->b_resid);
+    uprintf("hfsp_get_btnode: Bcount %ld, Bufsize %ld, Bresid %ld\n", bp->b_bcount, bp->b_bufsize, bp->b_resid);
 
     np = malloc(sizeof(*np), M_HFSPNODE, M_WAITOK | M_ZERO);
     if (np == NULL)
@@ -97,6 +98,17 @@ hfsp_get_btnode(struct hfsp_btree * btreep, u_int32_t num, struct hfsp_node ** n
     np->hn_beginBuf = (u_int8_t *)ndp;
     np->hn_recordTable = (u_int16_t*)(np->hn_beginBuf + np->hn_nodeSize);
     np->hn_inMemory = true;
+    switch (np->hn_kind)
+    {
+        case HFSP_NODE_INDEX:
+            np->hn_read = hfsp_brec_catalogue_index_read;
+            break;
+        case HFSP_NODE_LEAF:
+            np->hn_read = hfsp_brec_catalogue_read;
+            break;
+        default:
+            np->hn_read = hfsp_brec_noops;
+    }
 
     *npp = np;
 
@@ -126,33 +138,68 @@ hfsp_btree_close(struct hfsp_btree * btreep)
 }
 
 int
-hfsp_init_find_info(struct hfsp_find_info * fip)
+hfsp_btree_find(struct hfsp_btree * btreep, struct hfsp_record_key * kp, struct hfsp_record ** recpp)
 {
-    fip->hf_search_keyp = uma_zalloc(uma_record_key, M_WAITOK | M_ZERO);
-    if (fip->hf_search_keyp == NULL)
+    int error, level;
+    struct hfsp_node * np;
+    hfsp_cnid currentCnid;
+    struct hfsp_record * recp;
+
+    level = btreep->hb_treeDepth;
+
+    // We start from the root node.
+    currentCnid = btreep->hb_rootNode;
+    while (1)
     {
-        return ENOMEM;
+        error = hfsp_get_btnode(btreep, currentCnid, &np);
+        if (error)
+        {
+            uprintf("hfsp_btree_find: Getting error reading btnode.");
+            return error;
+        }
+
+        if (level == 1 && np->hn_kind == HFSP_NODE_LEAF)
+        {
+            hfsp_brec_find(np, kp, recpp);
+            error = 0;
+            break;
+        }
+        else if (level > 1 && np->hn_kind == HFSP_NODE_INDEX)
+        {
+            hfsp_brec_find(np, kp, recpp);
+            recp = *recpp;
+            currentCnid = recp->hr_index;
+        }
+        else
+        {
+            uprintf("hfap_btree_find: Invalid node type, level: %d,%d\n", np->hn_kind, level);
+            error = EINVAL;
+            break;
+        }
+
+
+        hfsp_release_btnode(np);
+        level--;
     }
 
-    fip->hf_current_keyp = uma_zalloc(uma_record_key, M_WAITOK | M_ZERO);
-    if (fip->hf_current_keyp == NULL)
-    {
-        uma_zfree(uma_record_key, fip->hf_search_keyp);
-        return ENOMEM;
-    }
-
-    return 0;
-}
-
-void
-hfsp_destroy_find_info(struct hfsp_find_info * fip)
-{
-    uma_zfree(uma_record_key, fip->hf_search_keyp);
-    uma_zfree(uma_record_key, fip->hf_current_keyp);
+    hfsp_release_btnode(np);
+    return error;
 }
 
 #define PBE16TOH(x) be16toh(*(u_int16_t*)(x))
 #define PBE32TOH(x) be32toh(*(u_int32_t*)(x))
+
+int
+hfsp_brec_key_cmp(struct hfsp_record_key * lkp, struct hfsp_record_key * rkp)
+{
+    if (lkp->hk_cnid < rkp->hk_cnid)
+        return -1;
+    if (lkp->hk_cnid > rkp->hk_cnid)
+        return 1;
+
+    return hfsp_unicode_cmp(&lkp->hk_name, &rkp->hk_name);
+
+}
 
 u_int16_t
 hfsp_brec_read_u16(struct hfsp_record * rp, u_int16_t offset)
@@ -205,39 +252,121 @@ hfsp_brec_catalogue_read_key(struct hfsp_record * rp, struct hfsp_record_key * r
 }
 
 int
-hfsp_brec_catalogue_read(struct hfsp_node * np, int recidx, struct hfsp_record ** recpp)
+hfsp_brec_catalogue_lookup_read(struct hfsp_node * np, int recidx, struct hfsp_record ** recpp)
 {
     struct hfsp_record * recp;
     int error;
 
-    recp = malloc(sizeof(struct hfsp_record), M_HFSPREC, M_WAITOK | M_ZERO);
-    if (!recp)
+    if (*recpp != NULL)
+        recp = *recpp;
+    else
     {
-        return ENOMEM;
+        recp = hfsp_brec_alloc();
+        if (!recp)
+        {
+            return ENOMEM;
+        }
     }
 
     recp->hr_node = np;
     recp->hr_offset = be16toh(*(np->hn_recordTable - (1 + recidx)));
-
 
     error = hfsp_brec_catalogue_read_key(recp, &recp->hr_key);
     if (error)
         return error;
 
     recp->hr_dataOffset = recp->hr_key.hk_len + sizeof(recp->hr_key.hk_len);
+
+    *recpp = recp;
+    return 0;
+}
+
+int
+hfsp_brec_find(struct hfsp_node * np, struct hfsp_record_key * kp, struct hfsp_record ** recpp)
+{
+    int begin, end, rec, res, error;
+    struct hfsp_record_key * curKeyp;
+
+    begin = 0;
+    end = np->hn_numRecords - 1;
+
+    do {
+        rec = (begin + end) >> 1;
+        error = hfsp_brec_catalogue_lookup_read(np, rec, recpp);
+        if (error)
+            return error;
+
+        curKeyp = &(*recpp)->hr_key;
+
+        res = hfsp_brec_key_cmp(curKeyp, kp);
+        if (res == 0)
+        {
+            np->hn_read(np, rec, recpp);
+            goto done;
+        }
+        if (res < 0)
+            begin = rec + 1;
+        else
+            end = rec - 1;
+
+
+    } while (begin <= end);
+
+    if (rec != end && end >= 0)
+    {
+        np->hn_read(np, end, recpp);
+    }
+    else
+    {
+        np->hn_read(np, rec, recpp);
+    }
+done:
+    return 0;
+}
+
+int
+hfsp_brec_noops(struct hfsp_node * np, int recidx, struct hfsp_record ** recpp)
+{
+    // The least we can do is to read the key.
+    return hfsp_brec_catalogue_lookup_read(np, recidx, recpp);
+}
+
+int
+hfsp_brec_catalogue_index_read(struct hfsp_node * np, int recidx, struct hfsp_record ** recpp)
+{
+    int error;
+    struct hfsp_record * recp;
+
+    error = hfsp_brec_catalogue_lookup_read(np, recidx, recpp);
+    if (error)
+        return error;
+    recp = *recpp;
+
+    recp->hr_index = hfsp_brec_read_u16(recp, recp->hr_dataOffset);
+    return 0;
+}
+
+int
+hfsp_brec_catalogue_read(struct hfsp_node * np, int recidx, struct hfsp_record ** recpp)
+{
+    int error;
+    struct hfsp_record * recp;
+    error = hfsp_brec_catalogue_lookup_read(np, recidx, recpp);
+    if (error)
+        return error;
+
+    recp = *recpp;
+
     recp->hr_type = hfsp_brec_read_u16(recp, recp->hr_dataOffset);
     if (recp->hr_type  <= 0 || recp->hr_type > RECORD_TYPE_COUNT)
     {
-        free(recp, M_HFSPREC);
         return EINVAL;
     }
 
     error = (brec_read_op[recp->hr_type - 1])(recp);
     if (error)
-    {
-        free(recp, M_HFSPREC);
         return error;
-    }
+
     *recpp = recp;
     return 0;
 }
@@ -276,8 +405,15 @@ hfsp_brec_catalogue_read_file(struct hfsp_record * recp)
     return 0;
 }
 
-void
-hfsp_brec_release_record(struct hfsp_record * rp)
+struct hfsp_record *
+hfsp_brec_alloc()
 {
-    free(rp, M_HFSPREC);
+    return malloc(sizeof(struct hfsp_record), M_HFSPREC, M_WAITOK | M_ZERO);
+}
+
+void
+hfsp_brec_release_record(struct hfsp_record ** rpp)
+{
+    free(*rpp, M_HFSPREC);
+    *rpp = NULL;
 }

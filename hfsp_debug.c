@@ -61,9 +61,8 @@ hfsp_uni2asc(struct hfsp_unistr * ustrp, char * astrp, int len)
 
     process = 0;
     left = len;
-    while (process < ustrp->hu_len || left > 0)
+    while (process < ustrp->hu_len && left > 0)
     {
-        uprintf("Convert 1 char");
         c = be16toh(ustrp->hu_str[process]);
         if (!c || c > 0x7f)
         {
@@ -98,10 +97,22 @@ udump(char * buff, int size)
     {
         for(i = 0; i < 8 && left > 0; i++, left--)
         {
-            uprintf("%02x", buff[size - left]);
+            uprintf("%02x ", buff[size - left]);
         }
         uprintf("\n");
     } while (left > 0);
+}
+
+void
+uprint_record_key(struct hfsp_record_key * rkp)
+{
+    char buf[250];
+
+    bzero(buf, sizeof(buf));
+
+    hfsp_uni2asc(&(rkp->hk_name), buf, sizeof(buf));
+    buf[sizeof(buf) - 1] = '\0';
+    uprintf("Key length: %d\nKey parent cnid: %d\nKey name: \"%s\"\n", rkp->hk_len, rkp->hk_cnid, buf);
 }
 
 // XXX: To remove, only for debugging
@@ -109,22 +120,33 @@ void
 uprint_record(struct hfsp_record * rp)
 {
     struct hfsp_record_thread * rtp;
-    char  buf[50];
+    char  buf[250];
 
     bzero(buf, sizeof(buf));
 
-    uprintf(" Record type %d\n", rp->hr_type);
+    uprintf("\n");
+    uprint_record_key(&rp->hr_key);
     switch (rp->hr_type)
     {
         case HFSP_FILE_THREAD_RECORD:
         case HFSP_FOLDER_THREAD_RECORD:
+            uprintf("Thread %s record\n", rp->hr_type == HFSP_FOLDER_THREAD_RECORD ? "folder" : "file");
             rtp = &rp->hr_thread;
-            hfsp_uni2asc(&rtp->hrt_name, buf, sizeof(buf));
+            hfsp_uni2asc(&(rtp->hrt_name), buf, sizeof(buf));
             buf[sizeof(buf) - 1] = '\0';
-            uprintf("Thread name %s \n", buf);
+            uprintf("Parent cnid: %d\nThread name %s \n", rtp->hrt_parentCnid, buf);
             break;
+
+        case HFSP_FOLDER_RECORD:
+            uprintf("Folder record\n");
+            break;
+
+        case HFSP_FILE_RECORD:
+            uprintf("File record\n");
+            break;
+
         default:
-            uprintf("Unkmown record type");
+            uprintf("Unkmown record type\n");
     }
 }
 
