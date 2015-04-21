@@ -97,7 +97,7 @@ udump(char * buff, int size)
     {
         for(i = 0; i < 8 && left > 0; i++, left--)
         {
-            uprintf("%02x ", buff[size - left]);
+            uprintf("%02x ", (u_int8_t)buff[size - left]);
         }
         uprintf("\n");
     } while (left > 0);

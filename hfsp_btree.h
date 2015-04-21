@@ -46,6 +46,9 @@ struct hfsp_btree {
     u_int16_t           hb_treeDepth;
     u_int32_t           hb_mapNode;
     u_int32_t           hb_firstLeafNode;
+    u_int32_t           hb_totalNodes;
+    u_int32_t           hb_freeNodes;
+    u_int32_t           hb_leafRecords;
 };
 
 /* In memory node */

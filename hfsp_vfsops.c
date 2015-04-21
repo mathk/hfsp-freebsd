@@ -301,13 +301,17 @@ hfsp_mount_volume(struct vnode * devvp, struct hfspmount * hmp, struct HFSPlusVo
 
     btreep = hmp->hm_catalog_bp;
 
-    uprintf("Catalog btree open\n Node size: %d (<< %d) \n Root node %d\n Map node %d\n Tree depth %d\n", 
-            btreep->hb_nodeSize, btreep->hb_nodeShift, btreep->hb_rootNode, btreep->hb_mapNode, btreep->hb_treeDepth);
+    uprintf("Catalog btree open\n Node size: %d (<< %d) \n Root node %d\n Map node %d\n Tree depth %d\n Total node: %d\n Free nodes: %d\n Records count: %d\n", 
+            btreep->hb_nodeSize, btreep->hb_nodeShift, btreep->hb_rootNode, btreep->hb_mapNode, btreep->hb_treeDepth, btreep->hb_totalNodes, btreep->hb_freeNodes, btreep->hb_leafRecords);
 
-    uprintf("Read Node number: %d\n", btreep->hb_firstLeafNode);
+    uprintf("Read Node number: %d\n", btreep->hb_rootNode);
     error = hfsp_get_btnode(btreep, btreep->hb_rootNode, &np);
     if (error)
         return error;
+
+    udump(np->hn_beginBuf, 160);
+    udump((char*)(np->hn_recordTable - 5), 10);
+
     uprintf("Openning first leaf node. Record nbrs: %d, kind %d\n, Buffer data %lx\nFirst record table offset %d\n", np->hn_numRecords, np->hn_kind, (u_int64_t)np->hn_beginBuf, be16toh(*(np->hn_recordTable - 1)));
 
     rp = hfsp_brec_alloc();
@@ -350,11 +354,9 @@ hfsp_mount_volume(struct vnode * devvp, struct hfspmount * hmp, struct HFSPlusVo
 
     hfsp_unicode_copy(&rp->hr_thread.hrt_name, &rkp->hk_name);
     rkp->hk_cnid = rp->hr_thread.hrt_parentCnid;
-    rkp->hk_len = sizeof(rkp->hk_cnid) + sizeof(rkp->hk_name.hu_len) + rkp->hk_name.hu_len;
+    rkp->hk_len = sizeof(rkp->hk_cnid) + sizeof(rkp->hk_name.hu_len) + (rkp->hk_name.hu_len * 2);
 
     uprintf("Looking for record key.\n");
-
-    uprint_record_key(rkp);
 
     error = hfsp_btree_find(btreep, rkp, &rp);
     if (!error)

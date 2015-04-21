@@ -54,6 +54,9 @@ hfsp_btree_open(struct hfsp_inode * ip, struct hfsp_btree ** btreepp)
     btreep->hb_rootNode = be32toh(btHeaderRaw->rootNode);
     btreep->hb_treeDepth = be16toh(btHeaderRaw->treeDepth);
     btreep->hb_firstLeafNode = be32toh(btHeaderRaw->firstLeafNode);
+    btreep->hb_totalNodes = be32toh(btHeaderRaw->totalNodes);
+    btreep->hb_freeNodes = be32toh(btHeaderRaw->freeNodes);
+    btreep->hb_totalNodes = be32toh(btHeaderRaw->leafRecords);
     btreep->hb_ip = ip;
     btreep->hb_nodeShift = ffs(btreep->hb_nodeSize) - 1;
 
@@ -247,7 +250,7 @@ hfsp_brec_catalogue_read_key(struct hfsp_record * rp, struct hfsp_record_key * r
 {
 
     rkp->hk_len = hfsp_brec_read_u16(rp, 0);
-    rkp->hk_cnid = hfsp_brec_read_u16(rp, sizeof(rkp->hk_len));
+    rkp->hk_cnid = hfsp_brec_read_u32(rp, sizeof(rkp->hk_len));
     return hfsp_brec_read_unistr(rp, sizeof(rkp->hk_len) + sizeof(rkp->hk_cnid), &rkp->hk_name);
 }
 
@@ -270,6 +273,8 @@ hfsp_brec_catalogue_lookup_read(struct hfsp_node * np, int recidx, struct hfsp_r
 
     recp->hr_node = np;
     recp->hr_offset = be16toh(*(np->hn_recordTable - (1 + recidx)));
+
+    uprintf("hfsp_brec_catalogue_lookup_read: Reading at offset %d\n", recp->hr_offset);
 
     error = hfsp_brec_catalogue_read_key(recp, &recp->hr_key);
     if (error)
