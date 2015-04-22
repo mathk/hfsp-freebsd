@@ -67,51 +67,6 @@ struct hfsp_node {
     btree_record_read_t hn_read;
 };
 
-struct hfsp_record_thread {
-    __int16_t           hrt_recordType;
-    hfsp_cnid           hrt_parentCnid;
-    struct hfsp_unistr  hrt_name;
-};
-
-struct hfsp_record_folder {
-    __int16_t           hrfo_recordType;
-    u_int16_t           hrfo_flags;
-    u_int32_t           hrfo_valance;
-    hfsp_cnid           hrfo_folderCnid;
-    u_int32_t           hrfo_createDate;
-    // XXX: To continue
-};
-
-struct hfsp_record_common {
-    __int16_t           hrc_recordType;
-};
-
-/* Key of a record */
-struct hfsp_record_key {
-    u_int16_t   hk_len;
-    hfsp_cnid   hk_cnid;
-    struct hfsp_unistr hk_name;
-};
-
-/* Record structure */
-struct hfsp_record {
-    struct hfsp_record_key  hr_key;
-    struct hfsp_node *      hr_node;
-    u_int16_t               hr_offset;  /*Offset in the b-tree node. */
-    u_int16_t               hr_dataOffset; /* Offset in the b-tree of the start of the data. */
-    union {
-        struct hfsp_record_common common;
-        struct hfsp_record_thread thread;
-        struct hfsp_record_folder folder;
-        u_int32_t   index;
-    } hr_data;
-};
-
-#define hr_type     hr_data.common.hrc_recordType
-#define hr_thread   hr_data.thread
-#define hr_folder   hr_data.folder
-#define hr_index    hr_data.index
-
 int hfsp_btree_open(struct hfsp_inode * ip, struct hfsp_btree ** btreepp);
 void hfsp_btree_close(struct hfsp_btree * btreep);
 void hfsp_release_btnode(struct hfsp_node * np);
@@ -126,12 +81,20 @@ int hfsp_brec_catalogue_read_key(struct hfsp_record * np, struct hfsp_record_key
 void hfsp_copy_record_key(struct hfsp_record_key * dstp, struct hfsp_record_key * srcp);
 
 /*
- * Find the record for a given cnid.
+ * Find the record for a given hfsp_record_key.
+ * btree: The btree where to find the record.
+ * kp: The hfsp_record_key structur to find.
+ * recpp: Address to pointer to the hfsp_record that will be fill upon exit.
+ */
+int hfsp_btree_find(struct hfsp_btree * btreep, struct hfsp_record_key * kp, struct hfsp_record ** recpp);
+
+/*
+ * Find a record for a given cnid.
  * btree: The btree where to find the record.
  * cnid: The cnid to find.
  * recpp: Address to pointer to the hfsp_record that will be fill upon exit.
  */
-int hfsp_btree_find(struct hfsp_btree * btreep, struct hfsp_record_key * kp, struct hfsp_record ** recpp);
+int hfsp_btree_find_cnid(struct hfsp_btree * btreep, hfsp_cnid cnid, struct hfsp_record ** recpp);
 
 /*
  * Compare record key.
@@ -251,5 +214,8 @@ struct hfsp_record * hfsp_brec_alloc(void);
  * Release a hfsp_record structure.
  */
 void hfsp_brec_release_record(struct hfsp_record ** rpp);
+
+#define PBE16TOH(x) be16toh(*(u_int16_t*)(x))
+#define PBE32TOH(x) be32toh(*(u_int32_t*)(x))
 
 #endif /* _HFSP_BTREE_H_ */

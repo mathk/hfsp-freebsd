@@ -144,11 +144,64 @@ struct hfsp_fork {
     struct hfsp_extent_descriptor first_extents[8];
 };
 
-struct hfsp_inode {
-    struct vnode *      hi_vp;
-    struct hfsp_fork    hi_fork;
-    struct hfspmount *  hi_mount;
+/* In memory content of a thread record */
+struct hfsp_record_thread {
+    __int16_t           hrt_recordType;
+    hfsp_cnid           hrt_parentCnid;
+    struct hfsp_unistr  hrt_name;
 };
+
+/* In memory content of a folder record */
+struct hfsp_record_folder {
+    __int16_t           hrfo_recordType;
+    u_int16_t           hrfo_flags;
+    u_int32_t           hrfo_valance;
+    hfsp_cnid           hrfo_folderCnid;
+    u_int32_t           hrfo_createDate;
+    // XXX: To continue
+};
+
+struct hfsp_record_common {
+    __int16_t           hrc_recordType;
+};
+
+/* Key of a record */
+struct hfsp_record_key {
+    u_int16_t   hk_len;
+    hfsp_cnid   hk_cnid;
+    struct hfsp_unistr hk_name;
+};
+
+/* Record structure */
+struct hfsp_record {
+    struct hfsp_record_key  hr_key;
+    struct hfsp_node *      hr_node;
+    u_int16_t               hr_offset;  /*Offset in the b-tree node. */
+    u_int16_t               hr_dataOffset; /* Offset in the b-tree of the start of the data. */
+    union {
+        struct hfsp_record_common common;
+        struct hfsp_record_thread thread;
+        struct hfsp_record_folder folder;
+        u_int32_t   index;
+    } hr_data;
+};
+
+#define hr_type     hr_data.common.hrc_recordType
+#define hr_thread   hr_data.thread
+#define hr_folder   hr_data.folder
+#define hr_index    hr_data.index
+
+struct hfsp_inode {
+    struct vnode *          hi_vp;
+    struct hfspmount *      hi_mount;
+    struct hfsp_record      hi_record;
+    // XXX Can be remove. File record must contain the correct fork
+    union {
+        struct hfsp_fork    fork;
+    } hi_data;
+};
+
+#define hi_fork     hi_data.fork
 
 struct hfspmount {
     u_int16_t                   hm_signature;  /* ==kHFSPlusSigWord */
@@ -168,6 +221,7 @@ int hfsp_bread_inode(struct hfsp_inode * ip, u_int64_t fileOffset, int size, str
 void hfsp_irelease(struct hfsp_inode * ip);
 
 #define VFSTOHFSPMNT(mp)        ((struct hfspmount *)((mp)->mnt_data))
+#define VTOI(vp)                ((struct hfsp_inode *)((vp)->v_data))
 #define HFSP_FIRSTEXTENT_SIZE   8
 extern struct vop_vector hfsp_vnodeops;
 extern uma_zone_t   uma_record_key;

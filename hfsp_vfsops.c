@@ -35,10 +35,11 @@ static vfs_unmount_t    hfsp_unmount;
 static vfs_statfs_t     hfsp_statfs;
 static vfs_init_t       hfsp_init;
 static vfs_uninit_t     hfsp_uninit;
+static vfs_root_t       hfsp_root;
 
 int hfsp_iget(struct hfspmount * mp, struct HFSPlusForkData * fork, struct hfsp_inode ** ipp);
 void hfsp_freemnt(struct hfspmount * hmp);
-int hfsp_vget(struct mount * mp, struct HFSPlusForkData * fork, struct vnode ** vpp);
+int hfsp_vget(struct mount * mp, hfsp_cnid ino, int flags, struct vnode ** vpp);
 int hfsp_mount_volume(struct vnode * devvp, struct hfspmount * hmp, struct HFSPlusVolumeHeader * hfsph);
 void udump(char * buff, int size);
 
@@ -49,7 +50,7 @@ static struct vfsops hfsp_vfsops = {
     .vfs_init =     hfsp_init,
     .vfs_uninit =   hfsp_uninit,
     .vfs_mount =    hfsp_mount,
-//    .vfs_root = NULL,
+    .vfs_root =     hfsp_root,
     .vfs_statfs =   hfsp_statfs,
 //    .vfs_sync =     NULL,
     .vfs_unmount =  hfsp_unmount,
@@ -174,8 +175,8 @@ hfsp_mount(struct mount *mp)
 
     vfs_mountedfrom(mp, fromPath);
 
-    error = ENOMEM;
-    goto out;
+    //error = ENOMEM;
+    //goto out;
     return 0;
 out:
     if (bp)
@@ -222,41 +223,46 @@ hfsp_iget(struct hfspmount * hmp, struct HFSPlusForkData * fork, struct hfsp_ino
 }
 
 int
-hfsp_vget(struct mount * mp, struct HFSPlusForkData * fork, struct vnode ** vpp)
+hfsp_vget(struct mount * mp, hfsp_cnid ino, int flags, struct vnode ** vpp)
 {
     struct hfsp_inode * ip;
     struct hfspmount * hmp;
     struct vnode * vp;
+    struct hfsp_record * rp;
     int error;
 
     hmp = VFSTOHFSPMNT(mp);
-    error = hfsp_iget(hmp, fork, &ip);
-    if (error)
+    ip = uma_zalloc(uma_inode, M_WAITOK | M_ZERO);
+    if (ip == NULL)
     {
-        return error;
+        return ENOMEM;
     }
+
 
     error = getnewvnode("hfsp", mp, &hfsp_vnodeops, &vp);
 
     if (error)
-    {
-        *vpp = NULL;
-        uma_zfree(uma_inode, ip);
-        return (error);
-    }
+        goto fail;
 
     vp->v_data = ip;
+    ip->hi_mount = hmp;
 
     error = insmntque(vp, mp);
     if (error)
-    {
-        *vpp = NULL;
-        uma_zfree(uma_inode, ip);
-        return (error);
-    }
+        goto fail;
+
+    rp = &ip->hi_record;
+    error = hfsp_btree_find_cnid(hmp->hm_catalog_bp, ino, &rp);
+    if (error)
+        goto fail;
 
     *vpp = vp;
     return (0);
+
+fail:
+    *vpp = NULL;
+    uma_zfree(uma_inode, ip);
+    return (error);
 }
 
 int
@@ -266,7 +272,6 @@ hfsp_mount_volume(struct vnode * devvp, struct hfspmount * hmp, struct HFSPlusVo
     struct hfsp_btree * btreep;
     struct hfsp_node * np;
     struct hfsp_record * rp;
-    struct hfsp_record_key * rkp;
     int error, i;
 
     error = hfsp_iget(hmp, &(hfsph->extentsFile), &ip);
@@ -334,37 +339,13 @@ hfsp_mount_volume(struct vnode * devvp, struct hfspmount * hmp, struct HFSPlusVo
 
     hfsp_release_btnode(np);
 
-    uprintf("* Find the root record thread first.\n");
-
-    rkp = malloc(sizeof(*rkp), M_HFSPKEY, M_WAITOK | M_ZERO);
-
-    if (rkp == NULL)
-    {
-        return ENOMEM;
-    }
-
-    rkp->hk_cnid = 2;
-    error = hfsp_btree_find(btreep, rkp, &rp);
+    uprintf("Search for the root cnid.");
+    error = hfsp_btree_find_cnid(btreep, 2, &rp);
     if (!error)
     {
         uprint_record(rp);
     }
 
-    uprintf("* Find the proper record.\n");
-
-    hfsp_unicode_copy(&rp->hr_thread.hrt_name, &rkp->hk_name);
-    rkp->hk_cnid = rp->hr_thread.hrt_parentCnid;
-    rkp->hk_len = sizeof(rkp->hk_cnid) + sizeof(rkp->hk_name.hu_len) + (rkp->hk_name.hu_len * 2);
-
-    uprintf("Looking for record key.\n");
-
-    error = hfsp_btree_find(btreep, rkp, &rp);
-    if (!error)
-    {
-        uprint_record(rp);
-    }
-
-    free(rkp, M_HFSPKEY);
     hfsp_brec_release_record(&rp);
 
     return error;
@@ -403,16 +384,26 @@ hfsp_freemnt(struct hfspmount * hmp)
 }
 
 static int
+hfsp_root(struct mount * mp, int flags, struct vnode ** vpp)
+{
+    return hfsp_vget(mp, 2, flags, vpp);
+}
+
+static int
 hfsp_unmount(struct mount *mp, int mntflags)
 {
     struct hfspmount * hmp;
     struct g_consumer * cp;
+    struct cdev * devp;
     struct vnode * devvp;
     uprintf("Unmounted device.\n");
 
     hmp = VFSTOHFSPMNT(mp);
     cp = hmp->hm_cp;
     devvp = hmp->hm_devvp;
+    devp = hmp->hm_dev;
+
+    vflush(mp, 0, 0, curthread);
     hfsp_freemnt(hmp);
 
     DROP_GIANT();
@@ -420,12 +411,14 @@ hfsp_unmount(struct mount *mp, int mntflags)
     g_vfs_close(hmp->hm_cp);
     g_topology_unlock();
     PICKUP_GIANT();
-    vrele(hmp->hm_devvp);
 
     mp->mnt_data = NULL;
     MNT_ILOCK(mp);
     mp->mnt_flag &= ~MNT_LOCAL;
     MNT_IUNLOCK(mp);
+
+    vrele(devvp);
+    dev_rel(devp);
     return 0;
 }
 

@@ -175,7 +175,7 @@ hfsp_btree_find(struct hfsp_btree * btreep, struct hfsp_record_key * kp, struct 
         }
         else
         {
-            uprintf("hfap_btree_find: Invalid node type, level: %d,%d\n", np->hn_kind, level);
+            uprintf("hfsp_btree_find: Invalid node type, level: %d,%d\n", np->hn_kind, level);
             error = EINVAL;
             break;
         }
@@ -189,8 +189,42 @@ hfsp_btree_find(struct hfsp_btree * btreep, struct hfsp_record_key * kp, struct 
     return error;
 }
 
-#define PBE16TOH(x) be16toh(*(u_int16_t*)(x))
-#define PBE32TOH(x) be32toh(*(u_int32_t*)(x))
+int
+hfsp_btree_find_cnid(struct hfsp_btree * btreep, hfsp_cnid cnid, struct hfsp_record ** recpp)
+{
+    struct hfsp_record_key * rkp;
+    struct hfsp_record * rp;
+    int error;
+
+    rkp = malloc(sizeof(*rkp), M_HFSPKEY, M_WAITOK | M_ZERO);
+    if (rkp == NULL)
+        return ENOMEM;
+
+    // First step find the record thread.
+    rkp->hk_cnid = cnid;
+    error = hfsp_btree_find(btreep, rkp, recpp);
+    if (error)
+    {
+        free(rkp, M_HFSPKEY);
+        return error;
+    }
+    rp = *recpp;
+
+    // Check that we have a thread record.
+    if (rp->hr_type != HFSP_FILE_THREAD_RECORD && rp->hr_type != HFSP_FOLDER_THREAD_RECORD)
+    {
+        uprintf("hfsp_btree_find_cnid: Bad record type: %d.", rp->hr_type);
+        free(rkp, M_HFSPKEY);
+        return EINVAL;
+    }
+
+    // Second step we do the lookup of the record.
+    hfsp_unicode_copy(&rp->hr_thread.hrt_name, &rkp->hk_name);
+    rkp->hk_cnid = rp->hr_thread.hrt_parentCnid;
+    error = hfsp_btree_find(btreep, rkp, recpp);
+    free(rkp, M_HFSPKEY);
+    return error;
+}
 
 int
 hfsp_brec_key_cmp(struct hfsp_record_key * lkp, struct hfsp_record_key * rkp)
