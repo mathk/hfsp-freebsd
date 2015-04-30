@@ -53,6 +53,7 @@ struct hfsp_btree {
 
 /* In memory node */
 struct hfsp_node {
+    struct hfsp_btree * hn_btreep;
     struct buf *        hn_buffer;          /* Buffer containing the read data */
     u_int64_t           hn_offset;          /* Offset from the special file. */
     u_int32_t           hn_next;
@@ -205,10 +206,21 @@ int hfsp_brec_noops(struct hfsp_node * np, int recidx, struct hfsp_record ** rec
  * Otherwise it will assume that the structure is allocated.
  */
 int hfsp_brec_find(struct hfsp_node * np, struct hfsp_record_key * kp, struct hfsp_record ** recpp);
+
 /*
  * Return a new structure that can hold record information.
  */
 struct hfsp_record * hfsp_brec_alloc(void);
+
+/*
+ * Fetch the next record. On return the node is the one from where the record have been fetch.
+ * npp: Node from where the fetch will happen. On exit the node can be updated.
+ * recidx: starting index of the record.
+ * next: number of record to go next. Can be negative.
+ * recpp: Address of a pointer to a hfsp_record. If it point to NULL the record will be allocated.
+ * Otherwise it will assume that the structure is allocated.
+ */
+int hfsp_brec_catalogue_read_next(struct hfsp_node ** npp, int recidx, int next, struct hfsp_record ** recpp);
 
 /*
  * Release a hfsp_record structure.

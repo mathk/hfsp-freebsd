@@ -90,6 +90,7 @@ hfsp_get_btnode(struct hfsp_btree * btreep, u_int32_t num, struct hfsp_node ** n
 
     ndp = (struct BTNodeDescriptor*)bp->b_data;
 
+    np->hn_btreep = btreep;
     np->hn_buffer = bp;
     np->hn_kind = ndp->kind;
     np->hn_height = ndp->height;
@@ -395,6 +396,54 @@ hfsp_brec_catalogue_index_read(struct hfsp_node * np, int recidx, struct hfsp_re
 }
 
 int
+hfsp_brec_catalogue_read_next(struct hfsp_node ** npp, int recidx, int next, struct hfsp_record ** recpp)
+{
+    struct hfsp_node * np;
+    struct hfsp_btree * btreep;
+    int nextIdx, error;
+    u_int32_t nextNode;
+    nextIdx = recidx + next;
+    np = *npp;
+    while ((int)np->hn_numRecords <= nextIdx)
+    {
+        nextIdx = nextIdx - np->hn_numRecords;
+        nextNode = np->hn_next;
+        if (nextNode == 0)
+        {
+            return EINVAL;
+        }
+        btreep = np->hn_btreep;
+        error = hfsp_get_btnode(btreep, nextNode, &np);
+        if (error)
+        {
+            return error;
+        }
+        hfsp_release_btnode(*npp);
+        *npp = np;
+    }
+    while (nextIdx < 0)
+    {
+        nextIdx = nextIdx + np->hn_numRecords;
+        nextNode = np->hn_prev;
+        if (nextNode == 0)
+        {
+            return EINVAL;
+        }
+        btreep = np->hn_btreep;
+        error = hfsp_get_btnode(btreep, nextNode, &np);
+        if (error)
+        {
+            return error;
+        }
+        hfsp_release_btnode(*npp);
+        *npp = np;
+    }
+
+
+    return hfsp_brec_catalogue_read(np, nextIdx, recpp);
+}
+
+int
 hfsp_brec_catalogue_read(struct hfsp_node * np, int recidx, struct hfsp_record ** recpp)
 {
     int error;
@@ -444,12 +493,14 @@ hfsp_brec_catalogue_read_folder(struct hfsp_record * recp)
     recp->hr_folder.hrfo_folderCnid = hfsp_brec_read_u32(recp, curOffset);
     curOffset += sizeof(recp->hr_folder.hrfo_folderCnid);
     recp->hr_folder.hrfo_createDate = hfsp_brec_read_u32(recp, curOffset);
+    // XXX Todo
     return 0;
 }
 
 int
 hfsp_brec_catalogue_read_file(struct hfsp_record * recp)
 {
+    // XXX Todo.
     return 0;
 }
 
