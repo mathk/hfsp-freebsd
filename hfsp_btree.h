@@ -71,7 +71,8 @@ struct hfsp_node {
 int hfsp_btree_open(struct hfsp_inode * ip, struct hfsp_btree ** btreepp);
 void hfsp_btree_close(struct hfsp_btree * btreep);
 void hfsp_release_btnode(struct hfsp_node * np);
-int hfsp_get_btnode(struct hfsp_btree * btreep, u_int32_t num, struct hfsp_node ** npp);
+int hfsp_get_btnode_from_idx(struct hfsp_btree * btreep, u_int32_t num, struct hfsp_node ** npp);
+int hfsp_get_btnode_from_offset(struct hfsp_btree * btreep, u_int64_t offset, struct hfsp_node ** npp);
 int hfsp_brec_catalogue_read_key(struct hfsp_record * np, struct hfsp_record_key * rkp);
 
 /*

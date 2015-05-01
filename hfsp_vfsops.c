@@ -300,7 +300,7 @@ hfsp_mount_volume(struct vnode * devvp, struct hfspmount * hmp, struct HFSPlusVo
 
     btreep = hmp->hm_catalog_bp;
 
-    error = hfsp_get_btnode(btreep, btreep->hb_rootNode, &np);
+    error = hfsp_get_btnode_from_idx(btreep, btreep->hb_rootNode, &np);
     if (error)
         return error;
 

@@ -68,15 +68,22 @@ hfsp_btree_open(struct hfsp_inode * ip, struct hfsp_btree ** btreepp)
 }
 
 int
-hfsp_get_btnode(struct hfsp_btree * btreep, u_int32_t num, struct hfsp_node ** npp)
+hfsp_get_btnode_from_idx(struct hfsp_btree * btreep, u_int32_t num, struct hfsp_node ** npp)
+{
+    u_int64_t  blockOffset;
+
+    blockOffset = (u_int64_t)num << btreep->hb_nodeShift;
+    return hfsp_get_btnode_from_offset(btreep, blockOffset, npp);
+}
+
+int
+hfsp_get_btnode_from_offset(struct hfsp_btree * btreep, u_int64_t blockOffset, struct hfsp_node ** npp)
 {
     struct buf * bp;
     struct hfsp_node * np;
     struct BTNodeDescriptor * ndp;
-    u_int64_t  blockOffset;
     int error;
 
-    blockOffset = (u_int64_t)num << btreep->hb_nodeShift;
     error = hfsp_bread_inode(btreep->hb_ip, blockOffset, btreep->hb_nodeSize, &bp);
     if (error)
     {
@@ -155,7 +162,7 @@ hfsp_btree_find(struct hfsp_btree * btreep, struct hfsp_record_key * kp, struct 
     currentCnid = btreep->hb_rootNode;
     while (1)
     {
-        error = hfsp_get_btnode(btreep, currentCnid, &np);
+        error = hfsp_get_btnode_from_idx(btreep, currentCnid, &np);
         if (error)
         {
             uprintf("hfsp_btree_find: Getting error reading btnode.");
@@ -186,6 +193,11 @@ hfsp_btree_find(struct hfsp_btree * btreep, struct hfsp_record_key * kp, struct 
         level--;
     }
 
+    if (*recpp != NULL)
+    {
+        recp = * recpp;
+        recp->hr_node = NULL;
+    }
     hfsp_release_btnode(np);
     return error;
 }
@@ -307,6 +319,7 @@ hfsp_brec_catalogue_lookup_read(struct hfsp_node * np, int recidx, struct hfsp_r
     }
 
     recp->hr_node = np;
+    recp->hr_nodeOffset = np->hn_offset;
     recp->hr_offset = be16toh(*(np->hn_recordTable - (1 + recidx)));
 
     uprintf("hfsp_brec_catalogue_lookup_read: Reading at offset %d\n", recp->hr_offset);
@@ -413,7 +426,7 @@ hfsp_brec_catalogue_read_next(struct hfsp_node ** npp, int recidx, int next, str
             return EINVAL;
         }
         btreep = np->hn_btreep;
-        error = hfsp_get_btnode(btreep, nextNode, &np);
+        error = hfsp_get_btnode_from_idx(btreep, nextNode, &np);
         if (error)
         {
             return error;
@@ -430,7 +443,7 @@ hfsp_brec_catalogue_read_next(struct hfsp_node ** npp, int recidx, int next, str
             return EINVAL;
         }
         btreep = np->hn_btreep;
-        error = hfsp_get_btnode(btreep, nextNode, &np);
+        error = hfsp_get_btnode_from_idx(btreep, nextNode, &np);
         if (error)
         {
             return error;

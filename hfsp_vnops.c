@@ -4,6 +4,7 @@
 #include <sys/mount.h>
 
 #include "hfsp.h"
+#include "hfsp_btree.h"
 
 static vop_reclaim_t    hfsp_reclaim;
 static vop_readdir_t    hfsp_readdir;
@@ -36,10 +37,27 @@ hfsp_readdir(struct vop_readdir_args /* */ *ap)
     struct hfsp_inode * ip;
     struct vnode * vp;
     struct hfspmount * hmp;
+    struct uio * uio;
+    struct hfsp_record_folder * rfp;
+    struct hfsp_node * np;
+    int error;
+
+    uio = ap->a_uio;
+    if (uio->uio_offset < 0)
+        return EINVAL;
 
     vp = ap->a_vp;
     ip = VTOI(ap->a_vp);
     hmp = VFSTOHFSPMNT(vp->v_mount);
+    rfp = &ip->hi_record.hr_folder;
+    error = hfsp_get_btnode_from_offset(hmp->hm_catalog_bp, ip->hi_record.hr_nodeOffset, &np);
+    if (error)
+        return error;
+
+    while (uio->uio_resid > 0 && uio->uio_offset < rfp->hrfo_valance)
+    {
+        
+    }
     return 0;
 }
 

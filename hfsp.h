@@ -176,6 +176,7 @@ struct hfsp_record_key {
 struct hfsp_record {
     struct hfsp_record_key  hr_key;
     struct hfsp_node *      hr_node;
+    u_int64_t               hr_nodeOffset;
     u_int16_t               hr_offset;  /*Offset in the b-tree node. */
     u_int16_t               hr_dataOffset; /* Offset in the b-tree of the start of the data. */
     union {
