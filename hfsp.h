@@ -64,6 +64,45 @@ struct HFSPlusForkData {
     HFSPlusExtentRecord extents;        /* initial set of extents */
 } __attribute__((aligned(2), packed));
 
+/* Mac OS X has 16 bytes worth of "BSD" info.
+ *  *
+ *   * Note:  Mac OS 9 implementations and applications
+ *    * should preserve, but not change, this information.
+ *     */
+struct HFSPlusBSDInfo {
+    u_int32_t   ownerID;    /* user-id of owner or hard link chain previous link */
+    u_int32_t   groupID;    /* group-id of owner or hard link chain next link */
+    u_int8_t    adminFlags; /* super-user changeable flags */
+    u_int8_t    ownerFlags; /* owner changeable flags */
+    u_int16_t   fileMode;   /* file type and permission bits */
+    union {
+        u_int32_t   iNodeNum;   /* indirect node number (hard links only) */
+        u_int32_t   linkCount;  /* links that refer to this indirect node */
+        u_int32_t   rawDevice;  /* special file device (FBLK and FCHR only) */
+    } special;
+} __attribute__((aligned(2), packed));
+typedef struct HFSPlusBSDInfo HFSPlusBSDInfo;
+
+struct FndrDirInfo {
+    struct {            /* folder's window rectangle */
+        __int16_t top;
+        __int16_t left;
+        __int16_t bottom;
+        __int16_t right;
+    } frRect;
+    unsigned short  frFlags;    /* Finder flags */
+    struct {
+        u_int16_t   v;      /* folder's location */
+        u_int16_t   h;
+    } frLocation;
+    __int16_t     opaque;
+} __attribute__((aligned(2), packed));
+typedef struct FndrDirInfo FndrDirInfo;
+
+struct FndrOpaqueInfo {
+    __int8_t opaque[16];
+} __attribute__((aligned(2), packed));
+typedef struct FndrOpaqueInfo FndrOpaqueInfo;
 
 struct HFSPlusVolumeHeader {
     __int16_t   signature;      /* == kHFSPlusSigWord */
@@ -133,6 +172,26 @@ struct BTHeaderRec {
 } __attribute__((aligned(2), packed));
 typedef struct BTHeaderRec BTHeaderRec;
 
+/* HFS Plus catalog folder record - 88 bytes */
+struct HFSPlusCatalogFolder {
+    __int16_t       recordType;     /* == kHFSPlusFolderRecord */
+    u_int16_t       flags;          /* file flags */
+    u_int32_t       valence;        /* folder's item count */
+    u_int32_t       folderID;       /* folder ID */
+    u_int32_t       createDate;     /* date and time of creation */
+    u_int32_t       contentModDate;     /* date and time of last content modification */
+    u_int32_t       attributeModDate;   /* date and time of last attribute modification */
+    u_int32_t       accessDate;     /* date and time of last access (MacOS X only) */
+    u_int32_t       backupDate;     /* date and time of last backup */
+    HFSPlusBSDInfo      bsdInfo;        /* permissions (for MacOS X) */
+    FndrDirInfo         userInfo;       /* Finder information */
+    FndrOpaqueInfo      finderInfo;     /* additional Finder information */
+    u_int32_t       textEncoding;       /* hint for name conversions */
+    u_int32_t       folderCount;        /* number of enclosed folders, active when HasFolderCount is set */
+} __attribute__((aligned(2), packed));
+typedef struct HFSPlusCatalogFolder HFSPlusCatalogFolder;
+
+
 struct hfsp_extent_descriptor {
     u_int32_t   startBlock;     /* first allocation block */
     u_int32_t   blockCount;     /* number of allocation blocks */
@@ -155,9 +214,12 @@ struct hfsp_record_thread {
 struct hfsp_record_folder {
     __int16_t           hrfo_recordType;
     u_int16_t           hrfo_flags;
-    u_int32_t           hrfo_valance;
+    u_int32_t           hrfo_valence;
     hfsp_cnid           hrfo_folderCnid;
     u_int32_t           hrfo_createDate;
+    u_int32_t           hrfo_lstAccessDate;
+    u_int32_t           hrfo_lstModifyDate;
+    u_int32_t           hrfo_lstChangeTime;
     // XXX: To continue
 };
 
@@ -179,6 +241,9 @@ struct hfsp_record {
     u_int64_t               hr_nodeOffset;
     u_int16_t               hr_offset;  /*Offset in the b-tree node. */
     u_int16_t               hr_dataOffset; /* Offset in the b-tree of the start of the data. */
+    u_int32_t               hr_ownerId;
+    u_int32_t               hr_groupId;
+    u_int16_t               hr_fileMode;
     union {
         struct hfsp_record_common common;
         struct hfsp_record_thread thread;
@@ -191,6 +256,7 @@ struct hfsp_record {
 #define hr_thread   hr_data.thread
 #define hr_folder   hr_data.folder
 #define hr_index    hr_data.index
+#define hr_cnid     hr_key.hk_cnid
 
 struct hfsp_inode {
     struct vnode *          hi_vp;
@@ -203,6 +269,7 @@ struct hfsp_inode {
 };
 
 #define hi_fork     hi_data.fork
+#define hi_cnid     hi_record.hr_cnid
 
 struct hfspmount {
     u_int16_t                   hm_signature;  /* ==kHFSPlusSigWord */
@@ -220,10 +287,22 @@ struct hfspmount {
 };
 int hfsp_bread_inode(struct hfsp_inode * ip, u_int64_t fileOffset, int size, struct buf ** bpp);
 void hfsp_irelease(struct hfsp_inode * ip);
+void hfsp_vinit(struct vnode * vp, struct hfsp_inode * ip);
 
 #define VFSTOHFSPMNT(mp)        ((struct hfspmount *)((mp)->mnt_data))
 #define VTOI(vp)                ((struct hfsp_inode *)((vp)->v_data))
 #define HFSP_FIRSTEXTENT_SIZE   8
+
+// Time macro
+#define hfsp_mac2unixtime(t) ((t) - 2082844800)
+#define hfsp_unix2mactime(t) ((t) + 2082844800)
+
+// Special CNID
+#define HFSP_ROOT_CNID          1 // Root parent id
+#define HFSP_ROOT_FOLDER_CNID   2 // Root folder
+#define HFSP_EXTENTS_FILE_CNID  3 // Extents file
+#define HFSP_CAT_FILE_CNID      4 // Catalogue file
+
 extern struct vop_vector hfsp_vnodeops;
 extern uma_zone_t   uma_record_key;
 

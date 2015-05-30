@@ -238,7 +238,6 @@ hfsp_vget(struct mount * mp, hfsp_cnid ino, int flags, struct vnode ** vpp)
         return ENOMEM;
     }
 
-
     error = getnewvnode("hfsp", mp, &hfsp_vnodeops, &vp);
 
     if (error)
@@ -255,6 +254,8 @@ hfsp_vget(struct mount * mp, hfsp_cnid ino, int flags, struct vnode ** vpp)
     error = hfsp_btree_find_cnid(hmp->hm_catalog_bp, ino, &rp);
     if (error)
         goto fail;
+
+    hfsp_vinit(vp, ip);
 
     *vpp = vp;
     return (0);

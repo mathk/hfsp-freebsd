@@ -35,7 +35,6 @@ hfsp_bread_inode(struct hfsp_inode * ip, u_int64_t fileOffset, int size, struct 
     if (fileOffset + size > fork->size)
         return (EBADF);
 
-    uprintf("hfsp_bread_inode: Read from extent: (start block[0]: %d, size[0]: %d)\n", fork->first_extents[0].startBlock, fork->first_extents[0].blockCount);
     /* First try to find in the first extent */
     for (blkCount = 0, i = 0; i < HFSP_FIRSTEXTENT_SIZE; i++)
     {
@@ -54,8 +53,6 @@ hfsp_bread_inode(struct hfsp_inode * ip, u_int64_t fileOffset, int size, struct 
     {
         return EINVAL;
     }
-
-    uprintf("hfsp_bread_inode: Read block: %d (Logical block size: %d, Size read %d)\n", blk * blkFactor, ip->hi_mount->hm_blockSize, sizeBread);
 
     return bread(vp, blk * blkFactor, sizeBread, NOCRED, bpp);
 }

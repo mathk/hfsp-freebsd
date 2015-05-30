@@ -89,7 +89,6 @@ hfsp_get_btnode_from_offset(struct hfsp_btree * btreep, u_int64_t blockOffset, s
     {
         return error;
     }
-    uprintf("hfsp_get_btnode: Bcount %ld, Bufsize %ld, Bresid %ld\n", bp->b_bcount, bp->b_bufsize, bp->b_resid);
 
     np = malloc(sizeof(*np), M_HFSPNODE, M_WAITOK | M_ZERO);
     if (np == NULL)
@@ -264,6 +263,12 @@ hfsp_brec_read_u32(struct hfsp_record * rp, u_int16_t offset)
     return PBE32TOH(rp->hr_node->hn_beginBuf + rp->hr_offset + offset);
 }
 
+caddr_t
+hfsp_brec_read_addr(struct hfsp_record * rp, u_int16_t offset)
+{
+    return (caddr_t)(rp->hr_node->hn_beginBuf + rp->hr_offset + offset);
+}
+
 void
 hfsp_brec_bcopy(struct hfsp_record * rp, u_int16_t offset, void * buf, size_t len)
 {
@@ -321,8 +326,6 @@ hfsp_brec_catalogue_lookup_read(struct hfsp_node * np, int recidx, struct hfsp_r
     recp->hr_node = np;
     recp->hr_nodeOffset = np->hn_offset;
     recp->hr_offset = be16toh(*(np->hn_recordTable - (1 + recidx)));
-
-    uprintf("hfsp_brec_catalogue_lookup_read: Reading at offset %d\n", recp->hr_offset);
 
     error = hfsp_brec_catalogue_read_key(recp, &recp->hr_key);
     if (error)
@@ -497,16 +500,27 @@ int
 hfsp_brec_catalogue_read_folder(struct hfsp_record * recp)
 {
     int curOffset;
+    struct HFSPlusBSDInfo * bsdInfo;
 
-    curOffset = recp->hr_dataOffset + sizeof(recp->hr_type);
+    curOffset = offsetof(struct HFSPlusCatalogFolder, flags) + recp->hr_dataOffset;
     recp->hr_folder.hrfo_flags = hfsp_brec_read_u16(recp, curOffset);
-    curOffset += sizeof(recp->hr_folder.hrfo_flags);
-    recp->hr_folder.hrfo_valance = hfsp_brec_read_u32(recp, curOffset);
-    curOffset += sizeof(recp->hr_folder.hrfo_valance);
+    curOffset = offsetof(struct HFSPlusCatalogFolder, valence) + recp->hr_dataOffset;
+    recp->hr_folder.hrfo_valence = hfsp_brec_read_u32(recp, curOffset);
+    curOffset = offsetof(struct HFSPlusCatalogFolder, folderID) + recp->hr_dataOffset;
     recp->hr_folder.hrfo_folderCnid = hfsp_brec_read_u32(recp, curOffset);
-    curOffset += sizeof(recp->hr_folder.hrfo_folderCnid);
-    recp->hr_folder.hrfo_createDate = hfsp_brec_read_u32(recp, curOffset);
-    // XXX Todo
+    curOffset = offsetof(struct HFSPlusCatalogFolder, createDate) + recp->hr_dataOffset;
+    recp->hr_folder.hrfo_createDate = hfsp_mac2unixtime(hfsp_brec_read_u32(recp, curOffset));
+    curOffset = offsetof(struct HFSPlusCatalogFolder, contentModDate) + recp->hr_dataOffset;
+    recp->hr_folder.hrfo_lstModifyDate = hfsp_mac2unixtime(hfsp_brec_read_u32(recp, curOffset));
+    curOffset = offsetof(struct HFSPlusCatalogFolder, attributeModDate) + recp->hr_dataOffset;
+    recp->hr_folder.hrfo_lstChangeTime = hfsp_mac2unixtime(hfsp_brec_read_u32(recp, curOffset));
+    curOffset = offsetof(struct HFSPlusCatalogFolder, accessDate) + recp->hr_dataOffset;
+    recp->hr_folder.hrfo_lstAccessDate = hfsp_mac2unixtime(hfsp_brec_read_u32(recp, curOffset));
+
+    curOffset = offsetof(struct HFSPlusCatalogFolder, bsdInfo) + recp->hr_dataOffset;
+    bsdInfo = (struct HFSPlusBSDInfo *)hfsp_brec_read_addr(recp, curOffset);
+    recp->hr_ownerId = be32toh(bsdInfo->ownerID);
+    recp->hr_groupId = be32toh(bsdInfo->groupID);
     return 0;
 }
 

@@ -124,6 +124,13 @@ u_int16_t hfsp_brec_read_u16(struct hfsp_record * rp, u_int16_t offset);
 u_int32_t hfsp_brec_read_u32(struct hfsp_record * rp, u_int16_t offset);
 
 /*
+ * Return an address within a record.
+ * rp: Pointer to a hfsp_record from which to read.
+ * offset: Offset from the beginning of the record.
+ */
+caddr_t hfsp_brec_read_addr(struct hfsp_record * rp, u_int16_t offset);
+
+/*
  * Bcopy data from a record.
  * rp: Pointer to an hfsp_record from which to bcopy.
  * offset: Offset from the beginning of the record.
