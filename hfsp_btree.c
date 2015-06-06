@@ -507,7 +507,7 @@ hfsp_brec_catalogue_read_folder(struct hfsp_record * recp)
     curOffset = offsetof(struct HFSPlusCatalogFolder, valence) + recp->hr_dataOffset;
     recp->hr_folder.hrfo_valence = hfsp_brec_read_u32(recp, curOffset);
     curOffset = offsetof(struct HFSPlusCatalogFolder, folderID) + recp->hr_dataOffset;
-    recp->hr_folder.hrfo_folderCnid = hfsp_brec_read_u32(recp, curOffset);
+    recp->hr_cnid = hfsp_brec_read_u32(recp, curOffset);
     curOffset = offsetof(struct HFSPlusCatalogFolder, createDate) + recp->hr_dataOffset;
     recp->hr_folder.hrfo_createDate = hfsp_mac2unixtime(hfsp_brec_read_u32(recp, curOffset));
     curOffset = offsetof(struct HFSPlusCatalogFolder, contentModDate) + recp->hr_dataOffset;

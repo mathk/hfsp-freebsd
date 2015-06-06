@@ -215,7 +215,6 @@ struct hfsp_record_folder {
     __int16_t           hrfo_recordType;
     u_int16_t           hrfo_flags;
     u_int32_t           hrfo_valence;
-    hfsp_cnid           hrfo_folderCnid;
     u_int32_t           hrfo_createDate;
     u_int32_t           hrfo_lstAccessDate;
     u_int32_t           hrfo_lstModifyDate;
@@ -238,6 +237,7 @@ struct hfsp_record_key {
 struct hfsp_record {
     struct hfsp_record_key  hr_key;
     struct hfsp_node *      hr_node;
+    hfsp_cnid               hr_cnid;
     u_int64_t               hr_nodeOffset;
     u_int16_t               hr_offset;  /*Offset in the b-tree node. */
     u_int16_t               hr_dataOffset; /* Offset in the b-tree of the start of the data. */
@@ -258,6 +258,7 @@ struct hfsp_record {
 };
 
 #define hr_type         hr_data.common.hrc_recordType
+#define hr_parentCnid   hr_key.hk_cnid
 #define hr_thread       hr_data.thread
 #define hr_folder       hr_data.folder
 #define hr_index        hr_data.index
