@@ -521,6 +521,8 @@ hfsp_brec_catalogue_read_folder(struct hfsp_record * recp)
     bsdInfo = (struct HFSPlusBSDInfo *)hfsp_brec_read_addr(recp, curOffset);
     recp->hr_ownerId = be32toh(bsdInfo->ownerID);
     recp->hr_groupId = be32toh(bsdInfo->groupID);
+    recp->hr_linkCount = be32toh(bsdInfo->special.linkCount);
+    recp->hr_fileMode = be16toh(bsdInfo->fileMode);
     return 0;
 }
 

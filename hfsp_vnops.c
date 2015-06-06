@@ -3,6 +3,7 @@
 #include <sys/types.h>
 #include <sys/vnode.h>
 #include <sys/mount.h>
+#include <sys/stat.h>
 
 #include "hfsp.h"
 #include "hfsp_btree.h"
@@ -39,7 +40,10 @@ hfsp_getattr(struct vop_getattr_args *ap)
         vap->va_mtime.tv_sec = recp->hr_folder.hrfo_lstModifyDate;
         vap->va_mtime.tv_nsec = 0;
         vap->va_size = recp->hr_folder.hrfo_valence + 2;
+        vap->va_nlink = recp->hr_linkCount;
+        vap->va_bytes = (recp->hr_folder.hrfo_valence + 2) * HFS_AVERAGE_DIRENTRY_SIZE;
     }
+    vap->va_mode = recp->hr_fileMode & (~S_IFMT);
     vap->va_type = vp->v_type;
     return 0;
 }
@@ -88,12 +92,13 @@ hfsp_readdir(struct vop_readdir_args /* */ *ap)
     }
 
     hfsp_release_btnode(np);
-    return 0;
+    return EBADF;
 }
 
 void
 hfsp_vinit(struct vnode * vp, struct hfsp_inode * ip)
 {
+    // XXX: Need to discover if it is a FIFO etc.
     if (ip->hi_record.hr_type < sizeof(hfsp_record2vtype))
         vp->v_type = hfsp_record2vtype[ip->hi_record.hr_type];
     else

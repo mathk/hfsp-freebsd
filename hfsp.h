@@ -245,6 +245,11 @@ struct hfsp_record {
     u_int32_t               hr_groupId;
     u_int16_t               hr_fileMode;
     union {
+        u_int32_t           iNodeNum;
+        u_int32_t           linkCount;
+        u_int32_t           rawDevice;
+    } hr_special;
+    union {
         struct hfsp_record_common common;
         struct hfsp_record_thread thread;
         struct hfsp_record_folder folder;
@@ -252,11 +257,14 @@ struct hfsp_record {
     } hr_data;
 };
 
-#define hr_type     hr_data.common.hrc_recordType
-#define hr_thread   hr_data.thread
-#define hr_folder   hr_data.folder
-#define hr_index    hr_data.index
-#define hr_cnid     hr_key.hk_cnid
+#define hr_type         hr_data.common.hrc_recordType
+#define hr_thread       hr_data.thread
+#define hr_folder       hr_data.folder
+#define hr_index        hr_data.index
+#define hr_cnid         hr_key.hk_cnid
+#define hr_iNodeNum     hr_special.iNodeNum
+#define hr_linkCount    hr_special.linkCount
+#define hr_rawDevice    hr_special.rawDevice
 
 struct hfsp_inode {
     struct vnode *          hi_vp;
@@ -302,6 +310,10 @@ void hfsp_vinit(struct vnode * vp, struct hfsp_inode * ip);
 #define HFSP_ROOT_FOLDER_CNID   2 // Root folder
 #define HFSP_EXTENTS_FILE_CNID  3 // Extents file
 #define HFSP_CAT_FILE_CNID      4 // Catalogue file
+
+// Estimation taken from xnu.
+#define HFS_AVERAGE_NAME_SIZE 22
+#define HFS_AVERAGE_DIRENTRY_SIZE (8 + HFS_AVERAGE_NAME_SIZE)
 
 extern struct vop_vector hfsp_vnodeops;
 extern uma_zone_t   uma_record_key;

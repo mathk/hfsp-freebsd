@@ -325,12 +325,12 @@ hfsp_mount_volume(struct vnode * devvp, struct hfspmount * hmp, struct HFSPlusVo
 
     hfsp_release_btnode(np);
 
-    uprintf("Search for the root cnid.");
+    /*uprintf("Search for the root cnid.");
     error = hfsp_btree_find_cnid(btreep, 2, &rp);
     if (!error)
     {
         uprint_record(rp);
-    }
+    }*/
 
     hfsp_brec_release_record(&rp);
 
